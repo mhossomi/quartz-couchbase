@@ -1,0 +1,11 @@
+version: '3.4'
+services:
+  couchbase:
+    build: ./src/docker
+    ports:
+      - "8091-8094:8091-8094"
+      - "11210:11210"
+    environment:
+      COUCHBASE_USERNAME: Administrator
+      COUCHBASE_PASSWORD: password
+      COUCHBASE_BUCKETS: quartz
