@@ -99,8 +99,8 @@ if ! initialized; then
     --cluster-username $COUCHBASE_USERNAME \
     --cluster-password $COUCHBASE_PASSWORD \
     --services data,index,query \
-    --cluster-ramsize 256 \
-    --cluster-index-ramsize 256
+    --cluster-ramsize 512 \
+    --cluster-index-ramsize 512
 
   echo "> Initializing node"
   retry 5 couchbase-cli node-init -c 127.0.0.1 \
