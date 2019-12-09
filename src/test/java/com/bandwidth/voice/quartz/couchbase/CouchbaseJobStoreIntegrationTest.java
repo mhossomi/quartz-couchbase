@@ -1,29 +1,41 @@
 package com.bandwidth.voice.quartz.couchbase;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.quartz.JobBuilder.newJob;
+import static org.quartz.JobKey.jobKey;
 import static org.quartz.TriggerBuilder.newTrigger;
 
 import com.couchbase.client.java.CouchbaseCluster;
+import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.quartz.Job;
+import org.quartz.JobBuilder;
+import org.quartz.JobDetail;
 import org.quartz.JobExecutionContext;
-import org.quartz.JobExecutionException;
+import org.quartz.JobKey;
 import org.quartz.Scheduler;
 import org.quartz.SchedulerException;
 import org.quartz.SchedulerFactory;
-import org.quartz.TriggerKey;
+import org.quartz.Trigger;
 import org.quartz.impl.StdSchedulerFactory;
-import org.quartz.impl.matchers.GroupMatcher;
 import org.quartz.simpl.SimpleThreadPool;
 
 @Slf4j
 public class CouchbaseJobStoreIntegrationTest {
 
+    private static Map<JobKey, CompletableFuture<JobExecutionContext>> futures = new ConcurrentHashMap<>();
+
+    private ExecutorService executor = Executors.newFixedThreadPool(10);
     private Scheduler scheduler;
 
     @Before
@@ -40,6 +52,7 @@ public class CouchbaseJobStoreIntegrationTest {
 
         SchedulerFactory factory = new StdSchedulerFactory(properties);
         scheduler = factory.getScheduler();
+        scheduler.start();
     }
 
     @After
@@ -49,38 +62,43 @@ public class CouchbaseJobStoreIntegrationTest {
         }
     }
 
-    @Test
-    public void test() throws SchedulerException, InterruptedException {
-        Thread t1 = new Thread(() -> {
+    @Test(timeout = 1000)
+    public void runsJobNow() throws Exception {
+        JobDetail job = newListenableJob().build();
+        var future = scheduleAndListen(job, newTrigger().startNow().build());
+
+        JobExecutionContext context = future.join();
+        assertThat(context.getJobDetail().getKey())
+                .isEqualTo(job.getKey());
+    }
+
+    private JobBuilder newListenableJob() {
+        JobKey jobKey = jobKey(UUID.randomUUID().toString());
+        return newJob(ListenableJob.class)
+                .withIdentity(jobKey);
+    }
+
+    private CompletableFuture<JobExecutionContext> scheduleAndListen(JobDetail job, Trigger trigger) {
+        CompletableFuture<JobExecutionContext> future = new CompletableFuture<>();
+        futures.put(job.getKey(), future);
+        executor.execute(() -> {
             try {
-                scheduler.scheduleJob(
-                        newJob().withIdentity("job-1").ofType(TestJob.class).build(),
-                        newTrigger().withIdentity("trigger-1").startNow().build());
+                scheduler.scheduleJob(job, trigger);
             }
-            catch (SchedulerException e) {
-                e.printStackTrace();
+            catch (Exception e) {
+                future.completeExceptionally(e);
             }
         });
-        Thread t2 = new Thread(() -> {
-            try {
-                scheduler.scheduleJob(
-                        newJob().withIdentity("job-2").ofType(TestJob.class).build(),
-                        newTrigger().withIdentity("trigger-2").startNow().build());
-            }
-            catch (SchedulerException e) {
-                e.printStackTrace();
-            }
-        });
-        t1.start();
-        t2.start();
-        t1.join();
-        t2.join();
+        return future;
     }
 
     @Slf4j
-    public static class TestJob implements Job {
-        public void execute(JobExecutionContext context) throws JobExecutionException {
-            log.info("Run!");
+    @AllArgsConstructor
+    public static class ListenableJob implements Job {
+        public void execute(JobExecutionContext context) {
+            JobKey key = context.getJobDetail().getKey();
+            log.info("Completed: {}", key);
+            futures.get(key).complete(context);
         }
     }
 }

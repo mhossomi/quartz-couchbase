@@ -13,7 +13,6 @@ import com.couchbase.client.java.Bucket;
 import com.couchbase.client.java.Cluster;
 import com.couchbase.client.java.document.Document;
 import com.couchbase.client.java.document.JsonDocument;
-import com.couchbase.client.java.document.json.JsonArray;
 import com.couchbase.client.java.document.json.JsonObject;
 import com.couchbase.client.java.error.DocumentAlreadyExistsException;
 import com.couchbase.client.java.error.TemporaryLockFailureException;
@@ -127,7 +126,7 @@ public class CouchbaseJobStore implements JobStore {
         executeInLock("trigger-access", () -> {
             JsonDocument document = JsonDocument.create(
                     triggerId(trigger),
-                    convert(trigger).put("jobs", JsonArray.from(convert(job))));
+                    convert(trigger).put("job", convert(job)));
             try {
                 // TODO: check job exists within triggers
                 bucket.insert(document);
@@ -340,6 +339,11 @@ public class CouchbaseJobStore implements JobStore {
     }
 
     private void executeInLock(String lockName, PersistenceRunnable action) throws JobPersistenceException {
+        executeInLock(lockName, action, () -> {});
+    }
+
+    private void executeInLock(String lockName, PersistenceRunnable action, PersistenceRunnable rollback)
+            throws JobPersistenceException {
         int tries = 0;
         String lockId = lockId(instanceName, lockName);
 
@@ -359,9 +363,14 @@ public class CouchbaseJobStore implements JobStore {
                     throw e;
                 }
             }
+            catch (Exception e) {
+                rollback.run();
+                throw e;
+            }
         }
         while (tries < MAX_TRIES);
 
+        rollback.run();
         throw new JobPersistenceException(
                 String.format("Failed to acquire lock %s after %d attempts.", lockId, MAX_TRIES));
     }
