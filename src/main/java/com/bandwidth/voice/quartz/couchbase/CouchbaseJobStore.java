@@ -4,7 +4,11 @@ import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.jobId;
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.lockId;
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.sleepQuietly;
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.triggerId;
+import static com.couchbase.client.java.query.Select.select;
+import static com.couchbase.client.java.query.dsl.Expression.TRUE;
+import static com.couchbase.client.java.query.dsl.Expression.i;
 import static java.lang.String.format;
+import static java.util.Arrays.stream;
 
 import com.bandwidth.voice.quartz.couchbase.converter.SimpleTriggerConverter;
 import com.bandwidth.voice.quartz.couchbase.converter.TriggerConverter;
@@ -16,6 +20,8 @@ import com.couchbase.client.java.document.JsonDocument;
 import com.couchbase.client.java.document.json.JsonObject;
 import com.couchbase.client.java.error.DocumentAlreadyExistsException;
 import com.couchbase.client.java.error.TemporaryLockFailureException;
+import com.couchbase.client.java.query.N1qlQueryResult;
+import com.couchbase.client.java.query.dsl.Expression;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +52,7 @@ import org.quartz.spi.TriggerFiredResult;
 public class CouchbaseJobStore implements JobStore {
 
     public static final int MAX_TRIES = 3;
+    public static final String LOCK_TRIGGER_ACCESS = "trigger-access";
     @Setter
     private static Cluster cluster;
 
@@ -61,14 +68,13 @@ public class CouchbaseJobStore implements JobStore {
     private int threadPoolSize;
 
     private Bucket bucket;
-    private SchedulerSignaler signaler;
 
     private final Set<TriggerConverter<?>> triggerConverters = Set.of(
             new SimpleTriggerConverter());
 
-    private JsonObject convert(JobDetail job) {
+    private JsonObject convertJob(JobDetail job) {
         return JsonObject.create()
-                .put("id", jobId(job))
+                .put("id", jobId(job.getKey()))
                 .put("name", job.getKey().getName())
                 .put("group", job.getKey().getGroup())
                 .put("description", job.getDescription())
@@ -76,11 +82,20 @@ public class CouchbaseJobStore implements JobStore {
                 .put("data", job.getJobDataMap());
     }
 
-    private JsonObject convert(Trigger trigger) {
+    private JsonObject convertTrigger(Trigger trigger, String schedulerName, String state) {
         return triggerConverters.stream()
                 .flatMap(e -> e.cast(trigger).stream())
                 .findAny().orElseThrow()
-                .convert(trigger);
+                .convert(trigger)
+                .put("schedulerName", schedulerName)
+                .put("state", state);
+    }
+
+    private Trigger convertTrigger(JsonObject object) {
+        return triggerConverters.stream()
+                .flatMap(e -> e.cast(object).stream())
+                .findAny().orElseThrow()
+                .convert(object);
     }
 
     public void initialize(ClassLoadHelper loadHelper, SchedulerSignaler signaler) throws SchedulerConfigException {
@@ -89,7 +104,6 @@ public class CouchbaseJobStore implements JobStore {
         this.bucket = Optional.ofNullable(bucketPassword)
                 .map(password -> cluster.openBucket(bucketName, password))
                 .orElseGet(() -> cluster.openBucket(bucketName));
-        this.signaler = signaler;
     }
 
     public void schedulerStarted() throws SchedulerException {
@@ -123,10 +137,12 @@ public class CouchbaseJobStore implements JobStore {
     }
 
     public void storeJobAndTrigger(JobDetail job, OperableTrigger trigger) throws JobPersistenceException {
-        executeInLock("trigger-access", () -> {
+        log.debug("storeJobAndTrigger: {}, {}", job, trigger);
+        executeInLock(LOCK_TRIGGER_ACCESS, () -> {
             JsonDocument document = JsonDocument.create(
-                    triggerId(trigger),
-                    convert(trigger).put("job", convert(job)));
+                    triggerId(trigger.getKey()),
+                    convertTrigger(trigger, instanceName, "READY")
+                            .put("job", convertJob(job)));
             try {
                 // TODO: check job exists within triggers
                 bucket.insert(document);
@@ -140,11 +156,17 @@ public class CouchbaseJobStore implements JobStore {
         });
     }
 
+    public void storeJobsAndTriggers(Map<JobDetail, Set<? extends Trigger>> triggersAndJobs, boolean replace)
+            throws JobPersistenceException {
+        log.debug("storeJobsAndTriggers: {}, {}", triggersAndJobs, replace);
+    }
+
     public void storeJob(JobDetail job, boolean replaceExisting) throws JobPersistenceException {
-        executeInLock("trigger-access", () -> {
+        log.debug("storeJob: {}, {}", job, replaceExisting);
+        executeInLock(LOCK_TRIGGER_ACCESS, () -> {
             JsonDocument document = JsonDocument.create(
-                    jobId(job),
-                    convert(job));
+                    jobId(job.getKey()),
+                    convertJob(job));
             try {
                 // TODO: check job exists within triggers
                 bucket.insert(document);
@@ -158,61 +180,58 @@ public class CouchbaseJobStore implements JobStore {
         });
     }
 
-    public void storeJobsAndTriggers(Map<JobDetail, Set<? extends Trigger>> triggersAndJobs, boolean replace)
-            throws JobPersistenceException {
-        executeInLock("trigger-access", () -> {
-            for (var e : triggersAndJobs.entrySet()) {
-                JobDetail job = e.getKey();
-                for (Trigger trigger : e.getValue()) {
-                    storeJobAndTrigger(job, (OperableTrigger) trigger);
-                }
-            }
-        });
-    }
-
     public boolean removeJob(JobKey jobKey) throws JobPersistenceException {
+        log.debug("removeJob: {}", jobKey);
         return false;
     }
 
     public boolean removeJobs(List<JobKey> jobKeys) throws JobPersistenceException {
+        log.debug("removeJobs: {}", jobKeys);
         return false;
     }
 
     public JobDetail retrieveJob(JobKey jobKey) throws JobPersistenceException {
+        log.debug("retrieveJob: {}", jobKey);
         return null;
     }
 
     public void storeTrigger(OperableTrigger newTrigger, boolean replaceExisting)
             throws ObjectAlreadyExistsException, JobPersistenceException {
-
+        log.debug("storeTrigger: {}, {}", newTrigger, replaceExisting);
     }
 
     public boolean removeTrigger(TriggerKey triggerKey) throws JobPersistenceException {
+        log.debug("removeTrigger: {}", triggerKey);
         return false;
     }
 
     public boolean removeTriggers(List<TriggerKey> triggerKeys) throws JobPersistenceException {
+        log.debug("removeTriggers: {}", triggerKeys);
         return false;
     }
 
     public boolean replaceTrigger(TriggerKey triggerKey, OperableTrigger newTrigger) throws JobPersistenceException {
+        log.debug("replaceTrigger: {}, {}", triggerKey, newTrigger);
         return false;
     }
 
     public OperableTrigger retrieveTrigger(TriggerKey triggerKey) throws JobPersistenceException {
+        log.debug("retrieveTrigger: {}", triggerKey);
         return null;
     }
 
     public boolean checkExists(JobKey jobKey) throws JobPersistenceException {
+        log.debug("checkExists: {}", jobKey);
         return false;
     }
 
     public boolean checkExists(TriggerKey triggerKey) throws JobPersistenceException {
+        log.debug("checkExists: {}", triggerKey);
         return false;
     }
 
     public void clearAllSchedulingData() throws JobPersistenceException {
-
+        log.debug("clearAllSchedulingData");
     }
 
     public void storeCalendar(String name, Calendar calendar, boolean replaceExisting, boolean updateTriggers)
@@ -241,10 +260,12 @@ public class CouchbaseJobStore implements JobStore {
     }
 
     public Set<JobKey> getJobKeys(GroupMatcher<JobKey> matcher) throws JobPersistenceException {
+        log.debug("getJobKeys: {}", matcher);
         return null;
     }
 
     public Set<TriggerKey> getTriggerKeys(GroupMatcher<TriggerKey> matcher) throws JobPersistenceException {
+        log.debug("getTriggerKeys: {}", matcher);
         return null;
     }
 
@@ -261,77 +282,99 @@ public class CouchbaseJobStore implements JobStore {
     }
 
     public List<OperableTrigger> getTriggersForJob(JobKey jobKey) throws JobPersistenceException {
+        log.debug("getTriggersForJob: {}", jobKey);
         return null;
     }
 
     public Trigger.TriggerState getTriggerState(TriggerKey triggerKey) throws JobPersistenceException {
+        log.debug("getTriggerState: {}", triggerKey);
         return null;
     }
 
     public void resetTriggerFromErrorState(TriggerKey triggerKey) throws JobPersistenceException {
-
+        log.debug("resetTriggerFromErrorState: {}", triggerKey);
     }
 
     public void pauseTrigger(TriggerKey triggerKey) throws JobPersistenceException {
-
+        log.debug("pauseTrigger: {}", triggerKey);
     }
 
     public Collection<String> pauseTriggers(GroupMatcher<TriggerKey> matcher) throws JobPersistenceException {
+        log.debug("pauseTriggers: {}", matcher);
         return null;
     }
 
     public void pauseJob(JobKey jobKey) throws JobPersistenceException {
-
+        log.debug("pauseJob: {}", jobKey);
     }
 
     public Collection<String> pauseJobs(GroupMatcher<JobKey> groupMatcher) throws JobPersistenceException {
+        log.debug("pauseJobs: {}", groupMatcher);
         return null;
     }
 
     public void resumeTrigger(TriggerKey triggerKey) throws JobPersistenceException {
-
+        log.debug("resumeTrigger: {}", triggerKey);
     }
 
     public Collection<String> resumeTriggers(GroupMatcher<TriggerKey> matcher) throws JobPersistenceException {
+        log.debug("resumeTriggers: {}", matcher);
         return null;
     }
 
     public Set<String> getPausedTriggerGroups() throws JobPersistenceException {
+        log.debug("getPausedTriggerGroups");
         return null;
     }
 
     public void resumeJob(JobKey jobKey) throws JobPersistenceException {
-
+        log.debug("resumeJob: {}", jobKey);
     }
 
     public Collection<String> resumeJobs(GroupMatcher<JobKey> matcher) throws JobPersistenceException {
+        log.debug("resumeJobs: {}", matcher);
         return null;
     }
 
     public void pauseAll() throws JobPersistenceException {
-
+        log.debug("pauseAll");
     }
 
     public void resumeAll() throws JobPersistenceException {
+        log.debug("resumeAll");
+    }
 
+    public static Expression allOf(Expression... exs) {
+        return stream(exs).reduce(TRUE(), Expression::and, Expression::and);
     }
 
     public List<OperableTrigger> acquireNextTriggers(long noLaterThan, int maxCount, long timeWindow)
             throws JobPersistenceException {
+        log.debug("acquireNextTriggers: {}, {}, {}", noLaterThan, maxCount, timeWindow);
+        executeInLock(LOCK_TRIGGER_ACCESS, () -> {
+            N1qlQueryResult result = bucket.query(select("*").from(bucketName).where(allOf(
+                    i("schedulerName").eq(instanceName),
+                    i("state").eq("READY"),
+                    i("nextFireTime").lte(noLaterThan + timeWindow))));
+
+            //            result.allRows().stream()
+            //                    .map(r -> r.value())
+        });
         return null;
     }
 
     public void releaseAcquiredTrigger(OperableTrigger trigger) {
-
+        log.debug("releaseAcquiredTrigger: {}", trigger);
     }
 
     public List<TriggerFiredResult> triggersFired(List<OperableTrigger> triggers) throws JobPersistenceException {
+        log.debug("triggersFired: {}", triggers);
         return null;
     }
 
     public void triggeredJobComplete(OperableTrigger trigger, JobDetail jobDetail,
             Trigger.CompletedExecutionInstruction triggerInstCode) {
-
+        log.debug("triggeredJobComplete: {}, {}, {}", trigger, jobDetail, triggerInstCode);
     }
 
     public long getAcquireRetryDelay(int failureCount) {

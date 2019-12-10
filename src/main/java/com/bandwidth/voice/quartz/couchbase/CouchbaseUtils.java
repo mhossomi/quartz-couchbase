@@ -1,17 +1,17 @@
 package com.bandwidth.voice.quartz.couchbase;
 
 import java.util.Date;
-import org.quartz.JobDetail;
-import org.quartz.Trigger;
+import org.quartz.JobKey;
+import org.quartz.TriggerKey;
 
 public class CouchbaseUtils {
 
-    public static String jobId(JobDetail job) {
-        return "J." + job.getKey().toString();
+    public static String jobId(JobKey key) {
+        return "J." + key.toString();
     }
 
-    public static String triggerId(Trigger trigger) {
-        return "T." + trigger.getKey().toString();
+    public static String triggerId(TriggerKey key) {
+        return "T." + key.toString();
     }
 
     static String lockId(String schedulerName, String lockName) {

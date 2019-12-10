@@ -9,6 +9,9 @@
         </encoder>
     </appender>
 
+    <logger name="org.quartz" level="debug"/>
+    <logger name="com.bandwidth.voice" level="debug"/>
+
     <root level="info">
         <appender-ref ref="CONSOLE"/>
     </root>

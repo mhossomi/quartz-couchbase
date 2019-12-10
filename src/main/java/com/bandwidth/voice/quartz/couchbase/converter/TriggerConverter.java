@@ -2,10 +2,14 @@ package com.bandwidth.voice.quartz.couchbase.converter;
 
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.serialize;
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.triggerId;
+import static org.quartz.SimpleScheduleBuilder.simpleSchedule;
+import static org.quartz.TriggerBuilder.newTrigger;
 
 import com.couchbase.client.java.document.json.JsonObject;
+import java.util.Objects;
 import java.util.Optional;
 import lombok.AllArgsConstructor;
+import org.quartz.SimpleScheduleBuilder;
 import org.quartz.Trigger;
 
 @AllArgsConstructor
@@ -14,10 +18,6 @@ public class TriggerConverter<T extends Trigger> {
     private final Class<T> triggerType;
     private final String triggerTypeName;
 
-    public boolean supports(Trigger t) {
-        return triggerType.isAssignableFrom(t.getClass());
-    }
-
     @SuppressWarnings("unchecked")
     public <U extends Trigger> Optional<TriggerConverter<U>> cast(U trigger) {
         return triggerType.isAssignableFrom(trigger.getClass())
@@ -25,10 +25,16 @@ public class TriggerConverter<T extends Trigger> {
                 : Optional.empty();
     }
 
+    public Optional<TriggerConverter<?>> cast(JsonObject object) {
+        return Objects.equals(object.getString("type"), triggerTypeName)
+                ? Optional.of(this)
+                : Optional.empty();
+    }
+
     public JsonObject convert(T trigger) {
         return JsonObject.create()
-                .put("type", "SIMPLE")
-                .put("id", triggerId(trigger))
+                .put("type", triggerTypeName)
+                .put("id", triggerId(trigger.getKey()))
                 .put("name", trigger.getKey().getName())
                 .put("group", trigger.getKey().getGroup())
                 .put("description", trigger.getDescription())
@@ -42,7 +48,11 @@ public class TriggerConverter<T extends Trigger> {
     }
 
     public T convert(JsonObject object) {
-        throw new UnsupportedOperationException();
+        return newTrigger()
+                .withIdentity(object.getString("name"), object.getString("group"))
+                .startNow()
+                .withSchedule(simpleSchedule())
+                .build();
     }
 
     /*
