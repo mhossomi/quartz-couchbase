@@ -1,19 +1,19 @@
 package com.bandwidth.voice.quartz.couchbase.converter;
 
+import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.parse;
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.serialize;
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.triggerId;
-import static org.quartz.SimpleScheduleBuilder.simpleSchedule;
-import static org.quartz.TriggerBuilder.newTrigger;
 
 import com.couchbase.client.java.document.json.JsonObject;
 import java.util.Objects;
 import java.util.Optional;
 import lombok.AllArgsConstructor;
-import org.quartz.SimpleScheduleBuilder;
+import org.quartz.JobDataMap;
 import org.quartz.Trigger;
+import org.quartz.TriggerBuilder;
 
 @AllArgsConstructor
-public class TriggerConverter<T extends Trigger> {
+public abstract class TriggerConverter<T extends Trigger> {
 
     private final Class<T> triggerType;
     private final String triggerTypeName;
@@ -31,8 +31,8 @@ public class TriggerConverter<T extends Trigger> {
                 : Optional.empty();
     }
 
-    public JsonObject convert(T trigger) {
-        return JsonObject.create()
+    public final JsonObject convert(T trigger) {
+        return convert(trigger, JsonObject.create()
                 .put("type", triggerTypeName)
                 .put("id", triggerId(trigger.getKey()))
                 .put("name", trigger.getKey().getName())
@@ -44,16 +44,22 @@ public class TriggerConverter<T extends Trigger> {
                 .put("nextFireTime", serialize(trigger.getNextFireTime()))
                 .put("previousFireTime", serialize(trigger.getPreviousFireTime()))
                 .put("priority", trigger.getPriority())
-                .put("misfireInstruction", trigger.getMisfireInstruction());
+                .put("misfireInstruction", trigger.getMisfireInstruction()));
     }
 
-    public T convert(JsonObject object) {
-        return newTrigger()
+    public abstract JsonObject convert(T trigger, JsonObject object);
+
+    public final T convert(JsonObject object) {
+        return convert(object, TriggerBuilder.newTrigger()
                 .withIdentity(object.getString("name"), object.getString("group"))
-                .startNow()
-                .withSchedule(simpleSchedule())
-                .build();
+                .withDescription(object.getString("description"))
+                .usingJobData(new JobDataMap(object.getObject("data").toMap()))
+                .startAt(parse(object.getString("startTime")))
+                .endAt(parse(object.getString("endTime")))
+                .withPriority(object.getInt("priority")));
     }
+
+    public abstract T convert(JsonObject object, TriggerBuilder<Trigger> trigger);
 
     /*
     -- Thanks to Amir Kibbar and Peter Rietzler for contributing the schema for H2 database,

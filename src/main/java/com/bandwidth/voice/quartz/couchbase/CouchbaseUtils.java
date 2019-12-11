@@ -1,5 +1,6 @@
 package com.bandwidth.voice.quartz.couchbase;
 
+import java.time.Instant;
 import java.util.Date;
 import org.quartz.JobKey;
 import org.quartz.TriggerKey;
@@ -21,6 +22,12 @@ public class CouchbaseUtils {
     public static String serialize(Date date) {
         return date != null
                 ? date.toInstant().toString()
+                : null;
+    }
+
+    public static Date parse(String date) {
+        return date != null
+                ? Date.from(Instant.parse(date))
                 : null;
     }
 
