@@ -12,6 +12,7 @@ import static com.couchbase.client.java.query.dsl.Sort.asc;
 import static com.couchbase.client.java.query.dsl.functions.DateFunctions.millis;
 import static java.lang.String.format;
 import static java.util.Arrays.stream;
+import static java.util.stream.Collectors.toList;
 
 import com.bandwidth.voice.quartz.couchbase.converter.SimpleTriggerConverter;
 import com.bandwidth.voice.quartz.couchbase.converter.TriggerConverter;
@@ -26,11 +27,9 @@ import com.couchbase.client.java.error.TemporaryLockFailureException;
 import com.couchbase.client.java.query.N1qlQueryResult;
 import com.couchbase.client.java.query.Statement;
 import com.couchbase.client.java.query.dsl.Expression;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import lombok.NoArgsConstructor;
@@ -356,41 +355,43 @@ public class CouchbaseJobStore implements JobStore {
     public List<OperableTrigger> acquireNextTriggers(long noLaterThan, int maxCount, long timeWindow)
             throws JobPersistenceException {
         log.debug("acquireNextTriggers: {}, {}, {}", noLaterThan, maxCount, timeWindow);
-        return executeInLock(LOCK_TRIGGER_ACCESS, () -> {
-            List<OperableTrigger> triggers;
-            int tries = 0;
-            do {
-                tries++;
-                long maxNextFireTime = Math.max(noLaterThan, System.currentTimeMillis()) + timeWindow;
-                Statement query = select(i("id")).from(bucketName)
-                        .where(allOf(
-                                i("schedulerName").eq(s(instanceName)),
-                                i("state").eq(s("READY")),
-                                millis(i("nextFireTime")).lte(maxNextFireTime)))
-                        .orderBy(asc(i("nextFireTime")))
-                        .limit(maxCount);
+        for (int tries = 0; tries < MAX_ACQUIRE_TRIES; tries++) {
+            long maxNextFireTime = Math.max(noLaterThan, System.currentTimeMillis()) + timeWindow;
+            Statement query = select(i("id")).from(bucketName)
+                    .where(allOf(
+                            i("schedulerName").eq(s(instanceName)),
+                            i("state").eq(s("READY")),
+                            millis(i("nextFireTime")).lte(maxNextFireTime)))
+                    .orderBy(asc(i("nextFireTime")))
+                    .limit(maxCount);
 
-                log.info("Query: {}", query);
-                N1qlQueryResult result = bucket.query(query);
+            log.info("Query: {}", query);
+            N1qlQueryResult result = bucket.query(query);
 
-                triggers = result.allRows().stream()
-                        .map(row -> row.value().getString("id"))
-                        .map(triggerId -> bucket.get(triggerId))
-                        .filter(Objects::nonNull)
-                        .collect(ArrayList::new, (t, document) -> {
-                            try {
-                                document.content().put("state", "ACQUIRED");
-                                bucket.replace(document);
-                                t.add(convertTrigger(document.content()));
-                            } catch (Exception e) {
-                                // Do nothing
-                            }
-                        }, ArrayList::addAll);
+            List<OperableTrigger> triggers = result.allRows().stream()
+                    .map(row -> row.value().getString("id"))
+                    .flatMap(triggerId -> acquireTrigger(triggerId).stream())
+                    .collect(toList());
+
+            if (!triggers.isEmpty()) {
+                return triggers;
             }
-            while (triggers.isEmpty() && tries <= MAX_ACQUIRE_TRIES);
+        }
+        return List.of();
+    }
 
-            return triggers;
-        });
+    private Optional<OperableTrigger> acquireTrigger(String triggerId) {
+        try {
+            return Optional.ofNullable(bucket.get(triggerId))
+                    .filter(document -> document.content().getString("state").equals("READY"))
+                    .map(document -> {
+                        document.content().put("state", "ACQUIRED");
+                        return bucket.replace(document);
+                    })
+                    .map(document -> convertTrigger(document.content()));
+        } catch (Exception e) {
+            return Optional.empty();
+        }
     }
 
     public void releaseAcquiredTrigger(OperableTrigger trigger) {
