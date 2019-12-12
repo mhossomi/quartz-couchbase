@@ -11,15 +11,16 @@ import lombok.AllArgsConstructor;
 import org.quartz.JobDataMap;
 import org.quartz.Trigger;
 import org.quartz.TriggerBuilder;
+import org.quartz.spi.OperableTrigger;
 
 @AllArgsConstructor
-public abstract class TriggerConverter<T extends Trigger> {
+public abstract class TriggerConverter<T extends OperableTrigger> {
 
     private final Class<T> triggerType;
     private final String triggerTypeName;
 
     @SuppressWarnings("unchecked")
-    public <U extends Trigger> Optional<TriggerConverter<U>> cast(U trigger) {
+    public <U extends OperableTrigger> Optional<TriggerConverter<U>> cast(U trigger) {
         return triggerType.isAssignableFrom(trigger.getClass())
                 ? Optional.of((TriggerConverter<U>) this)
                 : Optional.empty();
@@ -50,16 +51,27 @@ public abstract class TriggerConverter<T extends Trigger> {
     public abstract JsonObject convert(T trigger, JsonObject object);
 
     public final T convert(JsonObject object) {
-        return convert(object, TriggerBuilder.newTrigger()
+        T trigger = convert(object, TriggerBuilder.newTrigger()
                 .withIdentity(object.getString("name"), object.getString("group"))
                 .withDescription(object.getString("description"))
-                .usingJobData(new JobDataMap(object.getObject("data").toMap()))
+                .usingJobData(parseData(object))
                 .startAt(parse(object.getString("startTime")))
                 .endAt(parse(object.getString("endTime")))
                 .withPriority(object.getInt("priority")));
+        trigger.setNextFireTime(parse(object.getString("nextFireTime")));
+        trigger.setPreviousFireTime(parse(object.getString("previousFireTime")));
+        trigger.setMisfireInstruction(object.getInt("misfireInstruction"));
+        return trigger;
     }
 
-    public abstract T convert(JsonObject object, TriggerBuilder<Trigger> trigger);
+    public abstract T convert(JsonObject object, TriggerBuilder<Trigger> builder);
+
+    private static JobDataMap parseData(JsonObject object) {
+        return Optional.ofNullable(object.getObject("data"))
+                .map(JsonObject::toMap)
+                .map(JobDataMap::new)
+                .orElse(null);
+    }
 
     /*
     -- Thanks to Amir Kibbar and Peter Rietzler for contributing the schema for H2 database,

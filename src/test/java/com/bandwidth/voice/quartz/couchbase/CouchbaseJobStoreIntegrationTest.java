@@ -62,7 +62,7 @@ public class CouchbaseJobStoreIntegrationTest {
         }
     }
 
-    @Test(timeout = 1000)
+    @Test(timeout = 3000)
     public void runsJobNow() throws Exception {
         JobDetail job = newListenableJob().build();
         var future = scheduleAndListen(job, newTrigger().startNow().build());

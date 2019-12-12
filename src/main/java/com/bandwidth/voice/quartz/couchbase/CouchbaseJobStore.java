@@ -7,6 +7,9 @@ import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.triggerId;
 import static com.couchbase.client.java.query.Select.select;
 import static com.couchbase.client.java.query.dsl.Expression.TRUE;
 import static com.couchbase.client.java.query.dsl.Expression.i;
+import static com.couchbase.client.java.query.dsl.Expression.s;
+import static com.couchbase.client.java.query.dsl.Sort.asc;
+import static com.couchbase.client.java.query.dsl.functions.DateFunctions.millis;
 import static java.lang.String.format;
 import static java.util.Arrays.stream;
 
@@ -21,10 +24,13 @@ import com.couchbase.client.java.document.json.JsonObject;
 import com.couchbase.client.java.error.DocumentAlreadyExistsException;
 import com.couchbase.client.java.error.TemporaryLockFailureException;
 import com.couchbase.client.java.query.N1qlQueryResult;
+import com.couchbase.client.java.query.Statement;
 import com.couchbase.client.java.query.dsl.Expression;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import lombok.NoArgsConstructor;
@@ -51,8 +57,10 @@ import org.quartz.spi.TriggerFiredResult;
 @NoArgsConstructor
 public class CouchbaseJobStore implements JobStore {
 
-    public static final int MAX_TRIES = 3;
-    public static final String LOCK_TRIGGER_ACCESS = "trigger-access";
+    private static final int MAX_LOCK_TRIES = 3;
+    private static final int MAX_ACQUIRE_TRIES = 3;
+    private static final String LOCK_TRIGGER_ACCESS = "trigger-access";
+
     @Setter
     private static Cluster cluster;
 
@@ -82,16 +90,16 @@ public class CouchbaseJobStore implements JobStore {
                 .put("data", job.getJobDataMap());
     }
 
-    private JsonObject convertTrigger(Trigger trigger, String schedulerName, String state) {
+    private JsonObject convertTrigger(OperableTrigger trigger, String state) {
         return triggerConverters.stream()
                 .flatMap(e -> e.cast(trigger).stream())
                 .findAny().orElseThrow()
                 .convert(trigger)
-                .put("schedulerName", schedulerName)
+                .put("schedulerName", instanceName)
                 .put("state", state);
     }
 
-    private Trigger convertTrigger(JsonObject object) {
+    private OperableTrigger convertTrigger(JsonObject object) {
         return triggerConverters.stream()
                 .flatMap(e -> e.cast(object).stream())
                 .findAny().orElseThrow()
@@ -141,16 +149,14 @@ public class CouchbaseJobStore implements JobStore {
         executeInLock(LOCK_TRIGGER_ACCESS, () -> {
             JsonDocument document = JsonDocument.create(
                     triggerId(trigger.getKey()),
-                    convertTrigger(trigger, instanceName, "READY")
-                            .put("job", convertJob(job)));
+                    convertTrigger(trigger, "READY").put("job", convertJob(job)));
             try {
                 // TODO: check job exists within triggers
                 bucket.insert(document);
-            }
-            catch (DocumentAlreadyExistsException e) {
+                return null;
+            } catch (DocumentAlreadyExistsException e) {
                 throw new ObjectAlreadyExistsException(trigger);
-            }
-            catch (CouchbaseException e) {
+            } catch (CouchbaseException e) {
                 throw new JobPersistenceException("Error persisting trigger", e);
             }
         });
@@ -170,11 +176,10 @@ public class CouchbaseJobStore implements JobStore {
             try {
                 // TODO: check job exists within triggers
                 bucket.insert(document);
-            }
-            catch (DocumentAlreadyExistsException e) {
+                return null;
+            } catch (DocumentAlreadyExistsException e) {
                 throw new ObjectAlreadyExistsException(job);
-            }
-            catch (CouchbaseException e) {
+            } catch (CouchbaseException e) {
                 throw new JobPersistenceException("Error persisting job", e);
             }
         });
@@ -351,16 +356,41 @@ public class CouchbaseJobStore implements JobStore {
     public List<OperableTrigger> acquireNextTriggers(long noLaterThan, int maxCount, long timeWindow)
             throws JobPersistenceException {
         log.debug("acquireNextTriggers: {}, {}, {}", noLaterThan, maxCount, timeWindow);
-        executeInLock(LOCK_TRIGGER_ACCESS, () -> {
-            N1qlQueryResult result = bucket.query(select("*").from(bucketName).where(allOf(
-                    i("schedulerName").eq(instanceName),
-                    i("state").eq("READY"),
-                    i("nextFireTime").lte(noLaterThan + timeWindow))));
+        return executeInLock(LOCK_TRIGGER_ACCESS, () -> {
+            List<OperableTrigger> triggers;
+            int tries = 0;
+            do {
+                tries++;
+                long maxNextFireTime = Math.max(noLaterThan, System.currentTimeMillis()) + timeWindow;
+                Statement query = select(i("id")).from(bucketName)
+                        .where(allOf(
+                                i("schedulerName").eq(s(instanceName)),
+                                i("state").eq(s("READY")),
+                                millis(i("nextFireTime")).lte(maxNextFireTime)))
+                        .orderBy(asc(i("nextFireTime")))
+                        .limit(maxCount);
 
-            //            result.allRows().stream()
-            //                    .map(r -> r.value())
+                log.info("Query: {}", query);
+                N1qlQueryResult result = bucket.query(query);
+
+                triggers = result.allRows().stream()
+                        .map(row -> row.value().getString("id"))
+                        .map(triggerId -> bucket.get(triggerId))
+                        .filter(Objects::nonNull)
+                        .collect(ArrayList::new, (t, document) -> {
+                            try {
+                                document.content().put("state", "ACQUIRED");
+                                bucket.replace(document);
+                                t.add(convertTrigger(document.content()));
+                            } catch (Exception e) {
+                                // Do nothing
+                            }
+                        }, ArrayList::addAll);
+            }
+            while (triggers.isEmpty() && tries <= MAX_ACQUIRE_TRIES);
+
+            return triggers;
         });
-        return null;
     }
 
     public void releaseAcquiredTrigger(OperableTrigger trigger) {
@@ -381,11 +411,11 @@ public class CouchbaseJobStore implements JobStore {
         return 0;
     }
 
-    private void executeInLock(String lockName, PersistenceRunnable action) throws JobPersistenceException {
-        executeInLock(lockName, action, () -> {});
+    private <T> T executeInLock(String lockName, PersistenceSupplier<T> action) throws JobPersistenceException {
+        return executeInLock(lockName, action, () -> { });
     }
 
-    private void executeInLock(String lockName, PersistenceRunnable action, PersistenceRunnable rollback)
+    private <T> T executeInLock(String lockName, PersistenceSupplier<T> action, PersistenceRunnable rollback)
             throws JobPersistenceException {
         int tries = 0;
         String lockId = lockId(instanceName, lockName);
@@ -393,12 +423,11 @@ public class CouchbaseJobStore implements JobStore {
         do {
             tries++;
             try (AcquiredLock lock = new AcquiredLock(lockId)) {
-                action.run();
-                return;
+                return action.get();
             }
             catch (LockException e) {
                 if (e.isRetriable()) {
-                    log.warn("Failed to acquire lock {} (attempt {}/{})", lockId, tries, MAX_TRIES, e);
+                    log.warn("Failed to acquire lock {} (attempt {}/{})", lockId, tries, MAX_LOCK_TRIES, e);
                     sleepQuietly(100);
                 }
                 else {
@@ -407,15 +436,16 @@ public class CouchbaseJobStore implements JobStore {
                 }
             }
             catch (Exception e) {
+                log.warn("Execution failed!", e);
                 rollback.run();
                 throw e;
             }
         }
-        while (tries < MAX_TRIES);
+        while (tries < MAX_LOCK_TRIES);
 
         rollback.run();
         throw new JobPersistenceException(
-                String.format("Failed to acquire lock %s after %d attempts.", lockId, MAX_TRIES));
+                String.format("Failed to acquire lock %s after %d attempts.", lockId, MAX_LOCK_TRIES));
     }
 
     @RequiredArgsConstructor
@@ -452,6 +482,10 @@ public class CouchbaseJobStore implements JobStore {
                 bucket.unlock(lock.id(), lock.cas());
             }
         }
+    }
+
+    private interface PersistenceSupplier<T> {
+        T get() throws JobPersistenceException;
     }
 
     private interface PersistenceRunnable {
