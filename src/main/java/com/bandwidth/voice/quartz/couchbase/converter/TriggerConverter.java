@@ -1,5 +1,6 @@
 package com.bandwidth.voice.quartz.couchbase.converter;
 
+import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.jobId;
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.parse;
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.serialize;
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.triggerId;
@@ -35,11 +36,11 @@ public abstract class TriggerConverter<T extends OperableTrigger> {
     public final JsonObject convert(T trigger) {
         return convert(trigger, JsonObject.create()
                 .put("type", triggerTypeName)
-                .put("id", triggerId(trigger.getKey()))
                 .put("name", trigger.getKey().getName())
                 .put("group", trigger.getKey().getGroup())
                 .put("description", trigger.getDescription())
                 .put("data", trigger.getJobDataMap())
+                .put("job", jobId(trigger.getJobKey()))
                 .put("startTime", serialize(trigger.getStartTime()))
                 .put("endTime", serialize(trigger.getEndTime()))
                 .put("nextFireTime", serialize(trigger.getNextFireTime()))

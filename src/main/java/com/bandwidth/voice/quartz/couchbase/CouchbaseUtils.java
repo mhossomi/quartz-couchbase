@@ -1,5 +1,9 @@
 package com.bandwidth.voice.quartz.couchbase;
 
+import static com.couchbase.client.java.query.dsl.Expression.TRUE;
+import static java.util.Arrays.stream;
+
+import com.couchbase.client.java.query.dsl.Expression;
 import java.time.Instant;
 import java.util.Date;
 import org.quartz.JobKey;
@@ -8,11 +12,15 @@ import org.quartz.TriggerKey;
 public class CouchbaseUtils {
 
     public static String jobId(JobKey key) {
-        return "J." + key.toString();
+        return key != null
+                ? "J." + key.toString()
+                : null;
     }
 
     public static String triggerId(TriggerKey key) {
-        return "T." + key.toString();
+        return key != null
+                ? "T." + key.toString()
+                : null;
     }
 
     static String lockId(String schedulerName, String lockName) {
@@ -38,5 +46,9 @@ public class CouchbaseUtils {
         catch (InterruptedException e2) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    public static Expression allOf(Expression... exs) {
+        return stream(exs).reduce(TRUE(), Expression::and, Expression::and);
     }
 }
