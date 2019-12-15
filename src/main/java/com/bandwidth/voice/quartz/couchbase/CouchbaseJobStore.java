@@ -14,6 +14,7 @@ import static com.couchbase.client.java.query.dsl.functions.MetaFunctions.meta;
 import static java.lang.String.format;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
+import static org.quartz.JobBuilder.newJob;
 
 import com.bandwidth.voice.quartz.couchbase.converter.SimpleTriggerConverter;
 import com.bandwidth.voice.quartz.couchbase.converter.TriggerConverter;
@@ -29,7 +30,9 @@ import com.couchbase.client.java.error.DocumentDoesNotExistException;
 import com.couchbase.client.java.error.TemporaryLockFailureException;
 import com.couchbase.client.java.query.N1qlQueryResult;
 import com.couchbase.client.java.query.Statement;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -40,6 +43,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.quartz.Calendar;
+import org.quartz.Job;
+import org.quartz.JobDataMap;
 import org.quartz.JobDetail;
 import org.quartz.JobKey;
 import org.quartz.JobPersistenceException;
@@ -48,11 +53,13 @@ import org.quartz.SchedulerConfigException;
 import org.quartz.SchedulerException;
 import org.quartz.Trigger;
 import org.quartz.TriggerKey;
+import org.quartz.impl.JobDetailImpl;
 import org.quartz.impl.matchers.GroupMatcher;
 import org.quartz.spi.ClassLoadHelper;
 import org.quartz.spi.JobStore;
 import org.quartz.spi.OperableTrigger;
 import org.quartz.spi.SchedulerSignaler;
+import org.quartz.spi.TriggerFiredBundle;
 import org.quartz.spi.TriggerFiredResult;
 
 @Slf4j
@@ -89,6 +96,21 @@ public class CouchbaseJobStore implements JobStore {
                 .put("description", job.getDescription())
                 .put("type", job.getJobClass().getName())
                 .put("data", job.getJobDataMap());
+    }
+
+    @SuppressWarnings("unchecked")
+    public JobDetail convertJob(JsonObject object) {
+        try {
+            return newJob()
+                    .withIdentity(object.getString("name"), object.getString("group"))
+                    .withDescription(object.getString("description"))
+                    .ofType((Class<? extends Job>) Class.forName(object.getString("type")))
+                    .usingJobData(new JobDataMap(object.getObject("data").toMap()))
+                    .build();
+        }
+        catch (ClassNotFoundException e) {
+            throw new RuntimeException("Unknown job type: " + object.getString("type"));
+        }
     }
 
     private JsonObject convertTrigger(OperableTrigger trigger) {
@@ -194,7 +216,9 @@ public class CouchbaseJobStore implements JobStore {
 
     public JobDetail retrieveJob(JobKey jobKey) throws JobPersistenceException {
         log.debug("retrieveJob: {}", jobKey);
-        return null;
+        return Optional.ofNullable(bucket.get(jobId(jobKey)))
+                .map(document -> convertJob(document.content()))
+                .orElse(null);
     }
 
     public void storeTrigger(OperableTrigger trigger, boolean replaceExisting) throws JobPersistenceException {
@@ -419,7 +443,15 @@ public class CouchbaseJobStore implements JobStore {
 
     public List<TriggerFiredResult> triggersFired(List<OperableTrigger> triggers) throws JobPersistenceException {
         log.debug("triggersFired: {}", triggers);
-        return null;
+        List<TriggerFiredResult> result = new ArrayList<>();
+        for (OperableTrigger trigger : triggers) {
+            JobDetail job = retrieveJob(trigger.getJobKey());
+            trigger.triggered(null);
+            TriggerFiredBundle bundle = new TriggerFiredBundle(job, trigger, null, false,
+                    new Date(), trigger.getNextFireTime(), trigger.getPreviousFireTime(), trigger.getNextFireTime());
+            result.add(new TriggerFiredResult(bundle));
+        }
+        return result;
     }
 
     public void triggeredJobComplete(OperableTrigger trigger, JobDetail jobDetail,

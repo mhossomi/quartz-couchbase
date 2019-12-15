@@ -4,6 +4,7 @@ import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.jobId;
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.parse;
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.serialize;
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.triggerId;
+import static org.quartz.JobKey.jobKey;
 
 import com.couchbase.client.java.document.json.JsonObject;
 import java.util.Objects;
@@ -40,7 +41,8 @@ public abstract class TriggerConverter<T extends OperableTrigger> {
                 .put("group", trigger.getKey().getGroup())
                 .put("description", trigger.getDescription())
                 .put("data", trigger.getJobDataMap())
-                .put("job", jobId(trigger.getJobKey()))
+                .put("jobName", trigger.getJobKey().getName())
+                .put("jobGroup", trigger.getJobKey().getGroup())
                 .put("startTime", serialize(trigger.getStartTime()))
                 .put("endTime", serialize(trigger.getEndTime()))
                 .put("nextFireTime", serialize(trigger.getNextFireTime()))
@@ -56,6 +58,7 @@ public abstract class TriggerConverter<T extends OperableTrigger> {
                 .withIdentity(object.getString("name"), object.getString("group"))
                 .withDescription(object.getString("description"))
                 .usingJobData(parseData(object))
+                .forJob(jobKey(object.getString("jobName"), object.getString("jobGroup")))
                 .startAt(parse(object.getString("startTime")))
                 .endAt(parse(object.getString("endTime")))
                 .withPriority(object.getInt("priority")));
