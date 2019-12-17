@@ -1,9 +1,7 @@
 package com.bandwidth.voice.quartz.couchbase.converter;
 
-import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.jobId;
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.parse;
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.serialize;
-import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.triggerId;
 import static org.quartz.JobKey.jobKey;
 
 import com.couchbase.client.java.document.json.JsonObject;
@@ -22,14 +20,14 @@ public abstract class TriggerConverter<T extends OperableTrigger> {
     private final String triggerTypeName;
 
     @SuppressWarnings("unchecked")
-    public <U extends OperableTrigger> Optional<TriggerConverter<U>> cast(U trigger) {
-        return triggerType.isAssignableFrom(trigger.getClass())
+    public <U extends OperableTrigger> Optional<TriggerConverter<U>> forType(Class<? extends OperableTrigger> type) {
+        return triggerType.isAssignableFrom(type)
                 ? Optional.of((TriggerConverter<U>) this)
                 : Optional.empty();
     }
 
-    public Optional<TriggerConverter<?>> cast(JsonObject object) {
-        return Objects.equals(object.getString("type"), triggerTypeName)
+    public Optional<TriggerConverter<?>> forType(String type) {
+        return Objects.equals(type, triggerTypeName)
                 ? Optional.of(this)
                 : Optional.empty();
     }
