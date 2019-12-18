@@ -1,6 +1,7 @@
 package com.bandwidth.voice.quartz.couchbase;
 
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.allOf;
+import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.e;
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.jobId;
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.lockId;
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.triggerId;
@@ -30,8 +31,8 @@ import com.couchbase.client.java.error.TemporaryLockFailureException;
 import com.couchbase.client.java.query.N1qlQueryResult;
 import com.couchbase.client.java.query.N1qlQueryRow;
 import com.couchbase.client.java.query.Statement;
+import com.couchbase.client.java.query.dsl.Expression;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
@@ -62,8 +63,8 @@ public class CouchbaseDelegate {
         }
     }
 
-    public boolean isAvailable() {
-        return !bucket.isClosed();
+    public boolean isShutdown() {
+        return bucket.isClosed();
     }
 
     public AcquiredLock getLock(String lockName) {
@@ -145,15 +146,16 @@ public class CouchbaseDelegate {
         }
     }
 
-    public List<TriggerKey> selectTriggerKeys(String instanceName, String state, int maxCount, long maxNextFireTime)
+    public List<TriggerKey> selectTriggerKeys(String instanceName, TriggerState state, int maxCount,
+            long maxNextFireTime)
             throws JobPersistenceException {
 
         N1qlQueryResult result = query(select(i("name"), i("group"))
                 .from(bucket.name())
                 .where(allOf(
-                        x("META().id").like(s("T.%")),
                         i("schedulerName").eq(s(instanceName)),
-                        i("state").eq(s("READY")),
+                        x("META().id").like(s("T.%")),
+                        i("state").eq(e(state)),
                         millis(i("nextFireTime")).lte(maxNextFireTime)))
                 .orderBy(asc(i("nextFireTime")))
                 .limit(maxCount));
@@ -164,15 +166,15 @@ public class CouchbaseDelegate {
                 .collect(toList());
     }
 
-    public Optional<OperableTrigger> updateTriggerStatus(TriggerKey triggerKey, String from, String to)
+    public Optional<OperableTrigger> updateTriggerState(TriggerKey triggerKey, TriggerState from, TriggerState to)
             throws JobPersistenceException {
         try {
             return Optional.of(triggerId(triggerKey))
                     .map(bucket::get)
-                    .filter(document -> from == null || Objects.equals(from, document.content().getString("state")))
+                    .filter(document -> from == null || from == getTriggerState(document.content()))
                     .map(document -> {
-                        String previousState = document.content().getString("state");
-                        document.content().put("state", to);
+                        TriggerState previousState = getTriggerState(document.content());
+                        setTriggerState(document.content(), to);
                         try {
                             JsonDocument replaced = bucket.replace(document);
                             log.info("Updated trigger {} state from {} to {}",
@@ -195,9 +197,9 @@ public class CouchbaseDelegate {
         }
     }
 
-    public Optional<OperableTrigger> updateTriggerStatus(TriggerKey triggerKey, String newStatus)
+    public Optional<OperableTrigger> updateTriggerState(TriggerKey triggerKey, TriggerState to)
             throws JobPersistenceException {
-        return updateTriggerStatus(triggerKey, null, newStatus);
+        return updateTriggerState(triggerKey, null, to);
     }
 
     public boolean removeTrigger(TriggerKey triggerKey) throws JobPersistenceException {
@@ -219,13 +221,9 @@ public class CouchbaseDelegate {
 
         if (triggerJobKey.isPresent()) {
             JobKey jobKey = triggerJobKey.get();
-            N1qlQueryResult result = query(select(count("*").as("count"))
-                    .from(bucket.name())
-                    .where(allOf(
-                            i("jobName").eq(s(jobKey.getName())),
-                            i("jobGroup").eq(s(jobKey.getName())))));
-
-            int count = result.allRows().get(0).value().getInt("count");
+            int count = countAll(allOf(
+                    i("jobName").eq(s(jobKey.getName())),
+                    i("jobGroup").eq(s(jobKey.getName()))));
             log.debug("Job {} has {} triggers", jobKey, count);
 
             if (count == 0) {
@@ -283,6 +281,14 @@ public class CouchbaseDelegate {
                 .convert(object);
     }
 
+    private TriggerState getTriggerState(JsonObject trigger) {
+        return TriggerState.valueOf(trigger.getString("state"));
+    }
+
+    private JsonObject setTriggerState(JsonObject trigger, TriggerState state) {
+        return trigger.put("state", state.name());
+    }
+
     private N1qlQueryResult query(Statement query) throws JobPersistenceException {
         log.debug("Query: {}", query);
 
@@ -296,7 +302,23 @@ public class CouchbaseDelegate {
         catch (CouchbaseException e) {
             throw new JobPersistenceException("Failed to execute query", e);
         }
+    }
 
+    private int countAll(Expression filter) throws JobPersistenceException {
+        log.debug("Count: {}", filter);
+
+        try {
+            N1qlQueryResult result = bucket.query(select(count("*").as("count"))
+                    .from(bucket.name())
+                    .where(filter));
+            if (!result.finalSuccess()) {
+                throw new JobPersistenceException("Count failed: " + result.errors());
+            }
+            return result.allRows().get(0).value().getInt("count");
+        }
+        catch (CouchbaseException e) {
+            throw new JobPersistenceException("Failed to execute count", e);
+        }
     }
 
     @RequiredArgsConstructor

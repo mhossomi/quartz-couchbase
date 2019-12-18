@@ -1,6 +1,10 @@
 package com.bandwidth.voice.quartz.couchbase;
 
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.sleepQuietly;
+import static com.bandwidth.voice.quartz.couchbase.TriggerState.ACQUIRED;
+import static com.bandwidth.voice.quartz.couchbase.TriggerState.COMPLETE;
+import static com.bandwidth.voice.quartz.couchbase.TriggerState.ERROR;
+import static com.bandwidth.voice.quartz.couchbase.TriggerState.READY;
 
 import com.bandwidth.voice.quartz.couchbase.CouchbaseDelegate.AcquiredLock;
 import com.couchbase.client.java.Bucket;
@@ -77,7 +81,9 @@ public class CouchbaseJobStore implements JobStore {
     }
 
     public void shutdown() {
-        couchbase.shutdown();
+        if (couchbase != null && !couchbase.isShutdown()) {
+            couchbase.shutdown();
+        }
     }
 
     public boolean supportsPersistence() {
@@ -327,12 +333,12 @@ public class CouchbaseJobStore implements JobStore {
             long maxNextFireTime = Math.max(noLaterThan, System.currentTimeMillis()) + timeWindow;
 
             List<TriggerKey> triggerKeys = couchbase.selectTriggerKeys(
-                    instanceName, "READY", maxCount, maxNextFireTime);
+                    instanceName, READY, maxCount, maxNextFireTime);
             log.debug("Trying to acquire {} triggers", triggerKeys.size());
 
             for (TriggerKey triggerKey : triggerKeys) {
                 log.debug("Trying to acquire trigger: {}", triggerKey);
-                couchbase.updateTriggerStatus(triggerKey, "READY", "ACQUIRED").ifPresent(trigger -> {
+                couchbase.updateTriggerState(triggerKey, READY, ACQUIRED).ifPresent(trigger -> {
                     log.debug("Acquired trigger: {}", trigger.getKey());
                     triggers.add(trigger);
                 });
@@ -370,10 +376,10 @@ public class CouchbaseJobStore implements JobStore {
             TriggerKey triggerKey = trigger.getKey();
             switch (instruction) {
                 case SET_TRIGGER_COMPLETE:
-                    couchbase.updateTriggerStatus(triggerKey, "COMPLETE");
+                    couchbase.updateTriggerState(triggerKey, COMPLETE);
                     break;
                 case SET_TRIGGER_ERROR:
-                    couchbase.updateTriggerStatus(triggerKey, "ERROR");
+                    couchbase.updateTriggerState(triggerKey, ERROR);
                     break;
                 case DELETE_TRIGGER:
                     couchbase.removeTrigger(triggerKey);
@@ -427,7 +433,7 @@ public class CouchbaseJobStore implements JobStore {
     }
 
     private <T> T retryWhileAvailable(PersistenceSupplier<T> action) {
-        while (couchbase.isAvailable()) {
+        while (!couchbase.isShutdown()) {
             try {
                 return action.get();
             }

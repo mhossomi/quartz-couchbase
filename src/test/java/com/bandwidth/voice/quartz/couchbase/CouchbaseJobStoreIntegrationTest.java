@@ -45,6 +45,8 @@ public class CouchbaseJobStoreIntegrationTest {
                 .authenticate("Administrator", "password"));
 
         Properties properties = new Properties();
+        properties.put("org.quartz.scheduler.instanceName", "Quartz");
+        properties.put("org.quartz.scheduler.threadName", "Quartz");
         properties.put("org.quartz.jobStore.class", CouchbaseJobStore.class.getName());
         properties.put("org.quartz.threadPool.class", SimpleThreadPool.class.getName());
         properties.put("org.quartz.threadPool.threadCount", "10");
@@ -81,14 +83,12 @@ public class CouchbaseJobStoreIntegrationTest {
     private CompletableFuture<JobExecutionContext> scheduleAndListen(JobDetail job, Trigger trigger) {
         CompletableFuture<JobExecutionContext> future = new CompletableFuture<>();
         futures.put(job.getKey(), future);
-        executor.execute(() -> {
-            try {
-                scheduler.scheduleJob(job, trigger);
-            }
-            catch (Exception e) {
-                future.completeExceptionally(e);
-            }
-        });
+        try {
+            scheduler.scheduleJob(job, trigger);
+        }
+        catch (Exception e) {
+            future.completeExceptionally(e);
+        }
         return future;
     }
 

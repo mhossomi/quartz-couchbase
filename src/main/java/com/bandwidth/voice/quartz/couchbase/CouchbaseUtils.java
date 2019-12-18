@@ -1,6 +1,7 @@
 package com.bandwidth.voice.quartz.couchbase;
 
 import static com.couchbase.client.java.query.dsl.Expression.TRUE;
+import static com.couchbase.client.java.query.dsl.Expression.s;
 import static java.util.Arrays.stream;
 
 import com.couchbase.client.java.query.dsl.Expression;
@@ -39,6 +40,14 @@ public class CouchbaseUtils {
                 : null;
     }
 
+    public static Expression allOf(Expression... exs) {
+        return stream(exs).reduce(null, (c, e) -> c != null ? c.and(e) : e, Expression::and);
+    }
+
+    public static Expression e(Enum<?> value) {
+        return s(value.name());
+    }
+
     public static void sleepQuietly(int millis) {
         try {
             Thread.sleep(millis);
@@ -46,9 +55,5 @@ public class CouchbaseUtils {
         catch (InterruptedException e2) {
             Thread.currentThread().interrupt();
         }
-    }
-
-    public static Expression allOf(Expression... exs) {
-        return stream(exs).reduce(TRUE(), Expression::and, Expression::and);
     }
 }
