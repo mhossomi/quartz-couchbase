@@ -9,6 +9,7 @@ import java.sql.Date;
 import java.time.Instant;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
+import org.quartz.SchedulerException;
 
 @Slf4j
 public class SimpleTriggerTest extends IntegrationTestBase {
@@ -18,7 +19,7 @@ public class SimpleTriggerTest extends IntegrationTestBase {
         ListenableJob.Listener listener = schedule(
                 newJob(),
                 newTrigger().startNow());
-        listener.await().get(100, MILLISECONDS);
+        listener.await().get(1000, MILLISECONDS);
     }
 
     @Test
@@ -27,7 +28,7 @@ public class SimpleTriggerTest extends IntegrationTestBase {
                 newJob(),
                 newTrigger()
                         .startAt(Date.from(Instant.now().plusSeconds(5))));
-        listener.await().get(5100, MILLISECONDS);
+        listener.await().get(5000, MILLISECONDS);
     }
 
     @Test
@@ -39,8 +40,27 @@ public class SimpleTriggerTest extends IntegrationTestBase {
                         .withSchedule(simpleSchedule()
                                 .withRepeatCount(3)
                                 .withIntervalInSeconds(1)));
-        listener.await().get(100, MILLISECONDS);
-        listener.await().get(1100, MILLISECONDS);
-        listener.await().get(1100, MILLISECONDS);
+        listener.await().get(1000, MILLISECONDS);
+        listener.await().get(1000, MILLISECONDS);
+        listener.await().get(1000, MILLISECONDS);
+    }
+
+    @Test
+    public void reschedulesJob() throws Exception {
+        ListenableJob.Listener listener = schedule(
+                newJob(),
+                newTrigger().startNow());
+        listener.await().thenAccept(context -> {
+            try {
+                log.info("Rescheduling: {}", context.getJobDetail().getKey());
+                context.getScheduler().rescheduleJob(
+                        context.getTrigger().getKey(),
+                        newTrigger().startNow().build());
+            }
+            catch (SchedulerException e) {
+                throw new RuntimeException(e);
+            }
+        }).get(1000, MILLISECONDS);
+        listener.await().get(1000, MILLISECONDS);
     }
 }

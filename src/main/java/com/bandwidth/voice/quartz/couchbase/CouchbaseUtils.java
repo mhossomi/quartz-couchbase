@@ -41,7 +41,11 @@ public class CouchbaseUtils {
     }
 
     public static Expression allOf(Expression... exs) {
-        return stream(exs).reduce(null, (c, e) -> c != null ? c.and(e) : e, Expression::and);
+        if (exs.length == 0) { return TRUE(); }
+        if (exs.length == 1) { return exs[0]; }
+        return stream(exs)
+                .skip(1)
+                .reduce(exs[0], Expression::and, Expression::and);
     }
 
     public static Expression e(Enum<?> value) {

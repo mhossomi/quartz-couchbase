@@ -190,8 +190,7 @@ public class CouchbaseJobStore implements JobStore {
     }
 
     public boolean replaceTrigger(TriggerKey triggerKey, OperableTrigger newTrigger) throws JobPersistenceException {
-        log.trace("replaceTrigger: {}, {}", triggerKey, newTrigger);
-        return false;
+        throw new UnsupportedOperationException("replaceTrigger");
     }
 
     public OperableTrigger retrieveTrigger(TriggerKey triggerKey) throws JobPersistenceException {
@@ -210,7 +209,7 @@ public class CouchbaseJobStore implements JobStore {
     }
 
     public void clearAllSchedulingData() throws JobPersistenceException {
-        log.trace("clearAllSchedulingData");
+        throw new UnsupportedOperationException("clearAllSchedulingData");
     }
 
     public void storeCalendar(String name, Calendar calendar, boolean replaceExisting, boolean updateTriggers)
@@ -239,88 +238,79 @@ public class CouchbaseJobStore implements JobStore {
     }
 
     public Set<JobKey> getJobKeys(GroupMatcher<JobKey> matcher) throws JobPersistenceException {
-        log.trace("getJobKeys: {}", matcher);
-        return null;
+        throw new UnsupportedOperationException("getJobKeys");
     }
 
     public Set<TriggerKey> getTriggerKeys(GroupMatcher<TriggerKey> matcher) throws JobPersistenceException {
-        log.trace("getTriggerKeys: {}", matcher);
-        return null;
+        throw new UnsupportedOperationException("getTriggerKeys");
     }
 
     public List<String> getJobGroupNames() throws JobPersistenceException {
-        return null;
+        throw new UnsupportedOperationException("getJobGroupNames");
     }
 
     public List<String> getTriggerGroupNames() throws JobPersistenceException {
-        return null;
+        throw new UnsupportedOperationException("getTriggerGroupNames");
     }
 
     public List<String> getCalendarNames() throws JobPersistenceException {
-        return null;
+        throw new UnsupportedOperationException("getCalendarNames");
     }
 
     public List<OperableTrigger> getTriggersForJob(JobKey jobKey) throws JobPersistenceException {
-        log.trace("getTriggersForJob: {}", jobKey);
-        return null;
+        throw new UnsupportedOperationException("getTriggersForJob");
     }
 
     public Trigger.TriggerState getTriggerState(TriggerKey triggerKey) throws JobPersistenceException {
-        log.trace("getTriggerState: {}", triggerKey);
-        return null;
+        throw new UnsupportedOperationException("getTriggerState");
     }
 
     public void resetTriggerFromErrorState(TriggerKey triggerKey) throws JobPersistenceException {
-        log.trace("resetTriggerFromErrorState: {}", triggerKey);
+        throw new UnsupportedOperationException("resetTriggerFromErrorState");
     }
 
     public void pauseTrigger(TriggerKey triggerKey) throws JobPersistenceException {
-        log.trace("pauseTrigger: {}", triggerKey);
+        throw new UnsupportedOperationException("pauseTrigger");
     }
 
     public Collection<String> pauseTriggers(GroupMatcher<TriggerKey> matcher) throws JobPersistenceException {
-        log.trace("pauseTriggers: {}", matcher);
-        return null;
+        throw new UnsupportedOperationException("pauseTriggers");
     }
 
     public void pauseJob(JobKey jobKey) throws JobPersistenceException {
-        log.trace("pauseJob: {}", jobKey);
+        throw new UnsupportedOperationException("pauseJob");
     }
 
     public Collection<String> pauseJobs(GroupMatcher<JobKey> groupMatcher) throws JobPersistenceException {
-        log.trace("pauseJobs: {}", groupMatcher);
-        return null;
+        throw new UnsupportedOperationException("pauseJobs");
     }
 
     public void resumeTrigger(TriggerKey triggerKey) throws JobPersistenceException {
-        log.trace("resumeTrigger: {}", triggerKey);
+        throw new UnsupportedOperationException("resumeTrigger");
     }
 
     public Collection<String> resumeTriggers(GroupMatcher<TriggerKey> matcher) throws JobPersistenceException {
-        log.trace("resumeTriggers: {}", matcher);
-        return null;
+        throw new UnsupportedOperationException("resumeTriggers");
     }
 
     public Set<String> getPausedTriggerGroups() throws JobPersistenceException {
-        log.trace("getPausedTriggerGroups");
-        return null;
+        throw new UnsupportedOperationException("getPausedTriggerGroups");
     }
 
     public void resumeJob(JobKey jobKey) throws JobPersistenceException {
-        log.trace("resumeJob: {}", jobKey);
+        throw new UnsupportedOperationException("resumeJob");
     }
 
     public Collection<String> resumeJobs(GroupMatcher<JobKey> matcher) throws JobPersistenceException {
-        log.trace("resumeJobs: {}", matcher);
-        return null;
+        throw new UnsupportedOperationException("resumeJobs");
     }
 
     public void pauseAll() throws JobPersistenceException {
-        log.trace("pauseAll");
+        throw new UnsupportedOperationException("pauseAll");
     }
 
     public void resumeAll() throws JobPersistenceException {
-        log.trace("resumeAll");
+        throw new UnsupportedOperationException("resumeAll");
     }
 
     public List<OperableTrigger> acquireNextTriggers(long noLaterThan, int maxCount, long timeWindow)
@@ -348,7 +338,7 @@ public class CouchbaseJobStore implements JobStore {
     }
 
     public void releaseAcquiredTrigger(OperableTrigger trigger) {
-        log.trace("releaseAcquiredTrigger: {}", trigger);
+        throw new UnsupportedOperationException("releaseAcquiredTrigger");
     }
 
     public List<TriggerFiredResult> triggersFired(List<OperableTrigger> triggers) throws JobPersistenceException {
@@ -397,7 +387,7 @@ public class CouchbaseJobStore implements JobStore {
     }
 
     public long getAcquireRetryDelay(int failureCount) {
-        return 0;
+        throw new UnsupportedOperationException("getAcquireRetryDelay");
     }
 
     private <T> T executeInLock(

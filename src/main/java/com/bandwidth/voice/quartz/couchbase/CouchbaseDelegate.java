@@ -130,7 +130,7 @@ public class CouchbaseDelegate {
             insertOrUpsert(replaceExisting, JsonDocument.create(
                     triggerId(trigger.getKey()),
                     convertTrigger(trigger).put("state", state.toString())));
-            log.debug("Stored trigger {}", trigger.getKey());
+            log.debug("Stored trigger {} with state {}", trigger.getKey(), state);
         }
         catch (DocumentAlreadyExistsException e) {
             throw new ObjectAlreadyExistsException("Trigger already exists: " + trigger.getKey());
