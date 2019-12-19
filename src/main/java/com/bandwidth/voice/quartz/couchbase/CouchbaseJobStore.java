@@ -99,8 +99,8 @@ public class CouchbaseJobStore implements JobStore {
     }
 
     public void storeJobAndTrigger(JobDetail job, OperableTrigger trigger) throws JobPersistenceException {
-        log.debug("storeJobAndTrigger: {}, {}", job, trigger);
-        executeInLock(LOCK_TRIGGER_ACCESS, () -> {
+        log.trace("storeJobAndTrigger: {}, {}", job, trigger);
+        executeInLock("storeJobAndTrigger", LOCK_TRIGGER_ACCESS, () -> {
             couchbase.storeJob(job);
             couchbase.storeTrigger(trigger);
             return null;
@@ -112,8 +112,8 @@ public class CouchbaseJobStore implements JobStore {
 
     public void storeJobsAndTriggers(Map<JobDetail, Set<? extends Trigger>> triggersAndJobs, boolean replace)
             throws JobPersistenceException {
-        log.debug("storeJobsAndTriggers: {}, {}", triggersAndJobs, replace);
-        executeInLock(LOCK_TRIGGER_ACCESS, () -> {
+        log.trace("storeJobsAndTriggers: {}, {}", triggersAndJobs, replace);
+        executeInLock("storeJobAndTriggers", LOCK_TRIGGER_ACCESS, () -> {
             for (var triggerAndJob : triggersAndJobs.entrySet()) {
                 couchbase.storeJob(triggerAndJob.getKey());
                 for (Trigger trigger : triggerAndJob.getValue()) {
@@ -133,21 +133,21 @@ public class CouchbaseJobStore implements JobStore {
     }
 
     public void storeJob(JobDetail job, boolean replaceExisting) throws JobPersistenceException {
-        log.debug("storeJob: {}, {}", job, replaceExisting);
-        executeInLock(LOCK_TRIGGER_ACCESS, () -> {
+        log.trace("storeJob: {}, {}", job, replaceExisting);
+        executeInLock("storeJob", LOCK_TRIGGER_ACCESS, () -> {
             couchbase.storeJob(job);
             return null;
         });
     }
 
     public boolean removeJob(JobKey jobKey) throws JobPersistenceException {
-        log.debug("removeJob: {}", jobKey);
-        return executeInLock(LOCK_TRIGGER_ACCESS, () -> couchbase.removeJob(jobKey));
+        log.trace("removeJob: {}", jobKey);
+        return executeInLock("removeJob", LOCK_TRIGGER_ACCESS, () -> couchbase.removeJob(jobKey));
     }
 
     public boolean removeJobs(List<JobKey> jobKeys) throws JobPersistenceException {
-        log.debug("removeJobs: {}", jobKeys);
-        return executeInLock(LOCK_TRIGGER_ACCESS, () -> {
+        log.trace("removeJobs: {}", jobKeys);
+        return executeInLock("removeJobs", LOCK_TRIGGER_ACCESS, () -> {
             boolean foundAll = true;
             for (JobKey jobKey : jobKeys) {
                 foundAll = couchbase.removeJob(jobKey) && foundAll;
@@ -157,21 +157,21 @@ public class CouchbaseJobStore implements JobStore {
     }
 
     public JobDetail retrieveJob(JobKey jobKey) throws JobPersistenceException {
-        log.debug("retrieveJob: {}", jobKey);
+        log.trace("retrieveJob: {}", jobKey);
         return couchbase.retrieveJob(jobKey).orElse(null);
     }
 
     public void storeTrigger(OperableTrigger trigger, boolean replaceExisting) throws JobPersistenceException {
-        log.debug("storeTrigger: {}, {}", trigger, replaceExisting);
-        executeInLock(LOCK_TRIGGER_ACCESS, () -> {
+        log.trace("storeTrigger: {}, {}", trigger, replaceExisting);
+        executeInLock("storeTrigger", LOCK_TRIGGER_ACCESS, () -> {
             couchbase.storeTrigger(trigger);
             return null;
         });
     }
 
     public boolean removeTrigger(TriggerKey triggerKey) throws JobPersistenceException {
-        log.debug("removeTrigger: {}", triggerKey);
-        executeInLock(LOCK_TRIGGER_ACCESS, () -> {
+        log.trace("removeTrigger: {}", triggerKey);
+        executeInLock("removeTrigger", LOCK_TRIGGER_ACCESS, () -> {
             couchbase.removeTrigger(triggerKey);
             return null;
         });
@@ -179,8 +179,8 @@ public class CouchbaseJobStore implements JobStore {
     }
 
     public boolean removeTriggers(List<TriggerKey> triggerKeys) throws JobPersistenceException {
-        log.debug("removeTriggers: {}", triggerKeys);
-        return executeInLock(LOCK_TRIGGER_ACCESS, () -> {
+        log.trace("removeTriggers: {}", triggerKeys);
+        return executeInLock("removeTriggers", LOCK_TRIGGER_ACCESS, () -> {
             boolean foundAll = true;
             for (TriggerKey triggerKey : triggerKeys) {
                 foundAll = couchbase.removeTrigger(triggerKey) && foundAll;
@@ -190,27 +190,27 @@ public class CouchbaseJobStore implements JobStore {
     }
 
     public boolean replaceTrigger(TriggerKey triggerKey, OperableTrigger newTrigger) throws JobPersistenceException {
-        log.debug("replaceTrigger: {}, {}", triggerKey, newTrigger);
+        log.trace("replaceTrigger: {}, {}", triggerKey, newTrigger);
         return false;
     }
 
     public OperableTrigger retrieveTrigger(TriggerKey triggerKey) throws JobPersistenceException {
-        log.debug("retrieveTrigger: {}", triggerKey);
+        log.trace("retrieveTrigger: {}", triggerKey);
         return couchbase.retrieveTrigger(triggerKey).orElse(null);
     }
 
     public boolean checkExists(JobKey jobKey) throws JobPersistenceException {
-        log.debug("checkExists: {}", jobKey);
+        log.trace("checkExists: {}", jobKey);
         return couchbase.retrieveJob(jobKey).isPresent();
     }
 
     public boolean checkExists(TriggerKey triggerKey) throws JobPersistenceException {
-        log.debug("checkExists: {}", triggerKey);
+        log.trace("checkExists: {}", triggerKey);
         return couchbase.retrieveTrigger(triggerKey).isPresent();
     }
 
     public void clearAllSchedulingData() throws JobPersistenceException {
-        log.debug("clearAllSchedulingData");
+        log.trace("clearAllSchedulingData");
     }
 
     public void storeCalendar(String name, Calendar calendar, boolean replaceExisting, boolean updateTriggers)
@@ -239,12 +239,12 @@ public class CouchbaseJobStore implements JobStore {
     }
 
     public Set<JobKey> getJobKeys(GroupMatcher<JobKey> matcher) throws JobPersistenceException {
-        log.debug("getJobKeys: {}", matcher);
+        log.trace("getJobKeys: {}", matcher);
         return null;
     }
 
     public Set<TriggerKey> getTriggerKeys(GroupMatcher<TriggerKey> matcher) throws JobPersistenceException {
-        log.debug("getTriggerKeys: {}", matcher);
+        log.trace("getTriggerKeys: {}", matcher);
         return null;
     }
 
@@ -261,75 +261,75 @@ public class CouchbaseJobStore implements JobStore {
     }
 
     public List<OperableTrigger> getTriggersForJob(JobKey jobKey) throws JobPersistenceException {
-        log.debug("getTriggersForJob: {}", jobKey);
+        log.trace("getTriggersForJob: {}", jobKey);
         return null;
     }
 
     public Trigger.TriggerState getTriggerState(TriggerKey triggerKey) throws JobPersistenceException {
-        log.debug("getTriggerState: {}", triggerKey);
+        log.trace("getTriggerState: {}", triggerKey);
         return null;
     }
 
     public void resetTriggerFromErrorState(TriggerKey triggerKey) throws JobPersistenceException {
-        log.debug("resetTriggerFromErrorState: {}", triggerKey);
+        log.trace("resetTriggerFromErrorState: {}", triggerKey);
     }
 
     public void pauseTrigger(TriggerKey triggerKey) throws JobPersistenceException {
-        log.debug("pauseTrigger: {}", triggerKey);
+        log.trace("pauseTrigger: {}", triggerKey);
     }
 
     public Collection<String> pauseTriggers(GroupMatcher<TriggerKey> matcher) throws JobPersistenceException {
-        log.debug("pauseTriggers: {}", matcher);
+        log.trace("pauseTriggers: {}", matcher);
         return null;
     }
 
     public void pauseJob(JobKey jobKey) throws JobPersistenceException {
-        log.debug("pauseJob: {}", jobKey);
+        log.trace("pauseJob: {}", jobKey);
     }
 
     public Collection<String> pauseJobs(GroupMatcher<JobKey> groupMatcher) throws JobPersistenceException {
-        log.debug("pauseJobs: {}", groupMatcher);
+        log.trace("pauseJobs: {}", groupMatcher);
         return null;
     }
 
     public void resumeTrigger(TriggerKey triggerKey) throws JobPersistenceException {
-        log.debug("resumeTrigger: {}", triggerKey);
+        log.trace("resumeTrigger: {}", triggerKey);
     }
 
     public Collection<String> resumeTriggers(GroupMatcher<TriggerKey> matcher) throws JobPersistenceException {
-        log.debug("resumeTriggers: {}", matcher);
+        log.trace("resumeTriggers: {}", matcher);
         return null;
     }
 
     public Set<String> getPausedTriggerGroups() throws JobPersistenceException {
-        log.debug("getPausedTriggerGroups");
+        log.trace("getPausedTriggerGroups");
         return null;
     }
 
     public void resumeJob(JobKey jobKey) throws JobPersistenceException {
-        log.debug("resumeJob: {}", jobKey);
+        log.trace("resumeJob: {}", jobKey);
     }
 
     public Collection<String> resumeJobs(GroupMatcher<JobKey> matcher) throws JobPersistenceException {
-        log.debug("resumeJobs: {}", matcher);
+        log.trace("resumeJobs: {}", matcher);
         return null;
     }
 
     public void pauseAll() throws JobPersistenceException {
-        log.debug("pauseAll");
+        log.trace("pauseAll");
     }
 
     public void resumeAll() throws JobPersistenceException {
-        log.debug("resumeAll");
+        log.trace("resumeAll");
     }
 
     public List<OperableTrigger> acquireNextTriggers(long noLaterThan, int maxCount, long timeWindow)
             throws JobPersistenceException {
-        log.debug("acquireNextTriggers: {}, {}, {}", noLaterThan, maxCount, timeWindow);
+        log.trace("acquireNextTriggers: {}, {}, {}", noLaterThan, maxCount, timeWindow);
 
         List<OperableTrigger> triggers = new ArrayList<>();
         for (int tries = 0; tries < MAX_ACQUIRE_TRIES && triggers.isEmpty(); tries++) {
-            log.debug("Attempt {}/{} to acquire next triggers", tries, MAX_ACQUIRE_TRIES);
+            log.trace("Attempt {}/{} to acquire next triggers", tries, MAX_ACQUIRE_TRIES);
             long maxNextFireTime = Math.max(noLaterThan, System.currentTimeMillis()) + timeWindow;
 
             List<TriggerKey> triggerKeys = couchbase.selectTriggerKeys(
@@ -337,9 +337,9 @@ public class CouchbaseJobStore implements JobStore {
             log.debug("Trying to acquire {} triggers", triggerKeys.size());
 
             for (TriggerKey triggerKey : triggerKeys) {
-                log.debug("Trying to acquire trigger: {}", triggerKey);
+                log.trace("Trying to acquire trigger: {}", triggerKey);
                 couchbase.updateTriggerState(triggerKey, READY, ACQUIRED).ifPresent(trigger -> {
-                    log.debug("Acquired trigger: {}", trigger.getKey());
+                    log.trace("Acquired trigger: {}", trigger.getKey());
                     triggers.add(trigger);
                 });
             }
@@ -348,11 +348,11 @@ public class CouchbaseJobStore implements JobStore {
     }
 
     public void releaseAcquiredTrigger(OperableTrigger trigger) {
-        log.debug("releaseAcquiredTrigger: {}", trigger);
+        log.trace("releaseAcquiredTrigger: {}", trigger);
     }
 
     public List<TriggerFiredResult> triggersFired(List<OperableTrigger> triggers) throws JobPersistenceException {
-        log.debug("triggersFired: {}", triggers);
+        log.trace("triggersFired: {}", triggers);
         List<TriggerFiredResult> result = new ArrayList<>();
         for (OperableTrigger trigger : triggers) {
             Optional<JobDetail> triggerJob = couchbase.retrieveJob(trigger.getJobKey());
@@ -371,8 +371,8 @@ public class CouchbaseJobStore implements JobStore {
 
     public void triggeredJobComplete(OperableTrigger trigger, JobDetail jobDetail,
             CompletedExecutionInstruction instruction) {
-        log.debug("triggeredJobComplete: {}, {}, {}", trigger, jobDetail, instruction);
-        retryWhileAvailable(() -> executeInLock(LOCK_TRIGGER_ACCESS, () -> {
+        log.trace("triggeredJobComplete: {}, {}, {}", trigger, jobDetail, instruction);
+        retryWhileAvailable(() -> executeInLock("triggeredJobComplete", LOCK_TRIGGER_ACCESS, () -> {
             TriggerKey triggerKey = trigger.getKey();
             switch (instruction) {
                 case SET_TRIGGER_COMPLETE:
@@ -397,30 +397,34 @@ public class CouchbaseJobStore implements JobStore {
         return 0;
     }
 
-    private <T> T executeInLock(String lockName, PersistenceSupplier<T> action) throws JobPersistenceException {
-        return executeInLock(lockName, action, () -> { });
+    private <T> T executeInLock(
+            String lockerName, String lockName, PersistenceSupplier<T> action)
+            throws JobPersistenceException {
+        return executeInLock(lockerName, lockName, action, () -> { });
     }
 
-    private <T> T executeInLock(String lockName, PersistenceSupplier<T> action, PersistenceRunnable rollback)
+    private <T> T executeInLock(
+            String lockerName, String lockName, PersistenceSupplier<T> action, PersistenceRunnable rollback)
             throws JobPersistenceException {
         int tries = 0;
         do {
             tries++;
-            try (AcquiredLock lock = couchbase.getLock(lockName)) {
+            try (AcquiredLock lock = couchbase.getLock(lockerName, lockName)) {
                 return action.get();
             }
             catch (LockException e) {
                 if (e.isRetriable()) {
-                    log.warn("Failed to acquire lock {} (attempt {}/{})", lockName, tries, MAX_LOCK_TRIES, e);
+                    log.warn("[{}] Failed to acquire lock {} (attempt {}/{})",
+                            lockerName, lockName, tries, MAX_LOCK_TRIES, e);
                     sleepQuietly(100);
                 }
                 else {
-                    log.error("Failed to acquire lock {}", lockName, e);
+                    log.error("[{}] Failed to acquire lock {}", lockerName, lockName, e);
                     throw e;
                 }
             }
             catch (Exception e) {
-                log.warn("Execution failed!", e);
+                log.warn("[{}] Execution failed!", lockerName, e);
                 rollback.run();
                 throw e;
             }
@@ -428,8 +432,8 @@ public class CouchbaseJobStore implements JobStore {
         while (tries < MAX_LOCK_TRIES);
 
         rollback.run();
-        throw new JobPersistenceException(String.format("Failed to acquire lock %s after %d attempts.",
-                lockName, MAX_LOCK_TRIES));
+        throw new JobPersistenceException(String.format("[%s] Failed to acquire lock %s after %d attempts.",
+                lockerName, lockName, MAX_LOCK_TRIES));
     }
 
     private <T> T retryWhileAvailable(PersistenceSupplier<T> action) {
@@ -438,7 +442,7 @@ public class CouchbaseJobStore implements JobStore {
                 return action.get();
             }
             catch (Exception e) {
-                log.debug("Failed to execute, but insisting on it.", e);
+                log.trace("Failed to execute, but insisting on it.", e);
             }
             try {
                 Thread.sleep(100);

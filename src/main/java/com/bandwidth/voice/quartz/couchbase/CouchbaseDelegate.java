@@ -67,13 +67,16 @@ public class CouchbaseDelegate {
         return bucket.isClosed();
     }
 
-    public AcquiredLock getLock(String lockName) {
-        return new AcquiredLock(lockId(schedulerName, lockName));
+    public AcquiredLock getLock(String lockerName, String lockName) {
+        return new AcquiredLock(lockerName, lockId(schedulerName, lockName));
     }
 
     public void storeJob(JobDetail job) throws JobPersistenceException {
         try {
-            bucket.insert(JsonDocument.create(jobId(job.getKey()), convertJob(job)));
+            bucket.insert(JsonDocument.create(
+                    jobId(job.getKey()),
+                    convertJob(job)));
+            log.debug("Stored job {}", job.getKey());
         }
         catch (DocumentAlreadyExistsException e) {
             throw new ObjectAlreadyExistsException("Job already exists: " + job.getKey());
@@ -110,9 +113,11 @@ public class CouchbaseDelegate {
     public boolean removeJob(JobKey jobKey) throws JobPersistenceException {
         try {
             bucket.remove(jobId(jobKey));
+            log.debug("Removed job {}", jobKey);
             return true;
         }
         catch (DocumentDoesNotExistException e) {
+            log.debug("Job {} didn't exist", jobKey);
             return false;
         }
         catch (CouchbaseException e) {
@@ -121,11 +126,11 @@ public class CouchbaseDelegate {
     }
 
     public void storeTrigger(OperableTrigger trigger) throws JobPersistenceException {
-        JsonDocument document = JsonDocument.create(
-                triggerId(trigger.getKey()),
-                convertTrigger(trigger).put("state", "READY"));
         try {
-            bucket.insert(document);
+            bucket.insert(JsonDocument.create(
+                    triggerId(trigger.getKey()),
+                    convertTrigger(trigger).put("state", "READY")));
+            log.debug("Stored trigger {}", trigger.getKey());
         }
         catch (DocumentAlreadyExistsException e) {
             throw new ObjectAlreadyExistsException("Trigger already exists: " + trigger.getKey());
@@ -209,10 +214,12 @@ public class CouchbaseDelegate {
 
         try {
             bucket.remove(triggerId(triggerKey));
+            log.debug("Removed trigger {}", triggerKey);
         }
         catch (DocumentDoesNotExistException e) {
             // Trigger didn't exist, so obviously no associated job either.
             // Get back to work then.
+            log.debug("Trigger {} didn't exist", triggerKey);
             return false;
         }
         catch (CouchbaseException e) {
@@ -290,7 +297,7 @@ public class CouchbaseDelegate {
     }
 
     private N1qlQueryResult query(Statement query) throws JobPersistenceException {
-        log.debug("Query: {}", query);
+        log.trace("Query: {}", query);
 
         try {
             N1qlQueryResult result = bucket.query(query);
@@ -305,7 +312,7 @@ public class CouchbaseDelegate {
     }
 
     private int countAll(Expression filter) throws JobPersistenceException {
-        log.debug("Count: {}", filter);
+        log.trace("Count: {}", filter);
 
         try {
             N1qlQueryResult result = bucket.query(select(count("*").as("count"))
@@ -324,9 +331,11 @@ public class CouchbaseDelegate {
     @RequiredArgsConstructor
     public class AcquiredLock implements AutoCloseable {
 
+        private final String lockerName;
         private final Document<?> lock;
 
-        public AcquiredLock(String lockId) {
+        public AcquiredLock(String lockerName, String lockId) {
+            this.lockerName = lockerName;
             Document<?> newLock = JsonDocument.create(lockId);
 
             try {
@@ -338,20 +347,20 @@ public class CouchbaseDelegate {
                 else {
                     lock = acquiredLock;
                 }
-                log.debug("Lock {} acquired", lock.id());
+                log.debug("[{}] Lock {} acquired", lockerName, lock.id());
             }
             catch (TemporaryLockFailureException | DocumentAlreadyExistsException e) {
-                throw new LockException(true, format("Lock %s unavailable", newLock.id()));
+                throw new LockException(true, format("[%s] Lock %s unavailable", lockerName, newLock.id()));
             }
             catch (Exception e) {
-                throw new LockException(false, format("Failed to acquire lock %s", newLock.id()), e);
+                throw new LockException(false, format("[%s] Failed to acquire lock %s", lockerName, newLock.id()), e);
             }
         }
 
         @Override
         public void close() {
             if (lock != null) {
-                log.info("Releasing lock {}", lock.id());
+                log.info("[{}] Releasing lock {}", lockerName, lock.id());
                 bucket.unlock(lock.id(), lock.cas());
             }
         }
