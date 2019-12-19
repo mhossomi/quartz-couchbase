@@ -101,8 +101,8 @@ public class CouchbaseJobStore implements JobStore {
     public void storeJobAndTrigger(JobDetail job, OperableTrigger trigger) throws JobPersistenceException {
         log.trace("storeJobAndTrigger: {}, {}", job, trigger);
         executeInLock("storeJobAndTrigger", LOCK_TRIGGER_ACCESS, () -> {
-            couchbase.storeJob(job);
-            couchbase.storeTrigger(trigger);
+            couchbase.storeJob(job, false);
+            couchbase.storeTrigger(trigger, READY, false);
             return null;
         }, () -> {
             couchbase.removeJob(job.getKey());
@@ -115,9 +115,9 @@ public class CouchbaseJobStore implements JobStore {
         log.trace("storeJobsAndTriggers: {}, {}", triggersAndJobs, replace);
         executeInLock("storeJobAndTriggers", LOCK_TRIGGER_ACCESS, () -> {
             for (var triggerAndJob : triggersAndJobs.entrySet()) {
-                couchbase.storeJob(triggerAndJob.getKey());
+                couchbase.storeJob(triggerAndJob.getKey(), replace);
                 for (Trigger trigger : triggerAndJob.getValue()) {
-                    couchbase.storeTrigger((OperableTrigger) trigger);
+                    couchbase.storeTrigger((OperableTrigger) trigger, READY, replace);
                 }
             }
             return null;
@@ -135,7 +135,7 @@ public class CouchbaseJobStore implements JobStore {
     public void storeJob(JobDetail job, boolean replaceExisting) throws JobPersistenceException {
         log.trace("storeJob: {}, {}", job, replaceExisting);
         executeInLock("storeJob", LOCK_TRIGGER_ACCESS, () -> {
-            couchbase.storeJob(job);
+            couchbase.storeJob(job, replaceExisting);
             return null;
         });
     }
@@ -164,7 +164,7 @@ public class CouchbaseJobStore implements JobStore {
     public void storeTrigger(OperableTrigger trigger, boolean replaceExisting) throws JobPersistenceException {
         log.trace("storeTrigger: {}, {}", trigger, replaceExisting);
         executeInLock("storeTrigger", LOCK_TRIGGER_ACCESS, () -> {
-            couchbase.storeTrigger(trigger);
+            couchbase.storeTrigger(trigger, READY, replaceExisting);
             return null;
         });
     }
@@ -359,7 +359,10 @@ public class CouchbaseJobStore implements JobStore {
             if (triggerJob.isPresent()) {
                 JobDetail job = triggerJob.get();
                 Date scheduledFireTime = trigger.getPreviousFireTime();
+
                 trigger.triggered(null);
+                couchbase.storeTrigger(trigger, READY, true);
+
                 log.debug("Fired trigger {} with job {}", trigger.getKey(), job.getKey());
                 result.add(new TriggerFiredResult(new TriggerFiredBundle(
                         job, trigger, null, false,

@@ -22,10 +22,11 @@ public class SimpleTriggerTest extends IntegrationTestBase {
     }
 
     @Test
-    public void runsJobAfter5s() throws Exception {
+    public void runsFutureJob() throws Exception {
         ListenableJob.Listener listener = schedule(
                 newJob(),
-                newTrigger().startAt(Date.from(Instant.now().plusSeconds(5))));
+                newTrigger()
+                        .startAt(Date.from(Instant.now().plusSeconds(5))));
         listener.await().get(5100, MILLISECONDS);
     }
 
@@ -34,12 +35,12 @@ public class SimpleTriggerTest extends IntegrationTestBase {
         ListenableJob.Listener listener = schedule(
                 newJob(),
                 newTrigger()
+                        .startNow()
                         .withSchedule(simpleSchedule()
                                 .withRepeatCount(3)
-                                .withIntervalInSeconds(1))
-                        .startNow());
+                                .withIntervalInSeconds(1)));
         listener.await().get(100, MILLISECONDS);
-        listener.await().get(3000, MILLISECONDS);
-        listener.await().get(3000, MILLISECONDS);
+        listener.await().get(1100, MILLISECONDS);
+        listener.await().get(1100, MILLISECONDS);
     }
 }

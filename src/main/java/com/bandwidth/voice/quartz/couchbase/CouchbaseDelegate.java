@@ -71,9 +71,9 @@ public class CouchbaseDelegate {
         return new AcquiredLock(lockerName, lockId(schedulerName, lockName));
     }
 
-    public void storeJob(JobDetail job) throws JobPersistenceException {
+    public void storeJob(JobDetail job, boolean replaceExisting) throws JobPersistenceException {
         try {
-            bucket.insert(JsonDocument.create(
+            insertOrUpsert(replaceExisting, JsonDocument.create(
                     jobId(job.getKey()),
                     convertJob(job)));
             log.debug("Stored job {}", job.getKey());
@@ -125,11 +125,11 @@ public class CouchbaseDelegate {
         }
     }
 
-    public void storeTrigger(OperableTrigger trigger) throws JobPersistenceException {
+    public void storeTrigger(OperableTrigger trigger, TriggerState state, boolean replaceExisting) throws JobPersistenceException {
         try {
-            bucket.insert(JsonDocument.create(
+            insertOrUpsert(replaceExisting, JsonDocument.create(
                     triggerId(trigger.getKey()),
-                    convertTrigger(trigger).put("state", "READY")));
+                    convertTrigger(trigger).put("state", state.toString())));
             log.debug("Stored trigger {}", trigger.getKey());
         }
         catch (DocumentAlreadyExistsException e) {
@@ -238,6 +238,15 @@ public class CouchbaseDelegate {
             }
         }
         return true;
+    }
+
+    private void insertOrUpsert(boolean upsert, JsonDocument document) {
+        if (upsert) {
+            bucket.upsert(document);
+        }
+        else {
+            bucket.insert(document);
+        }
     }
 
     private JsonObject convertJob(JobDetail job) {
