@@ -190,7 +190,17 @@ public class CouchbaseJobStore implements JobStore {
     }
 
     public boolean replaceTrigger(TriggerKey triggerKey, OperableTrigger newTrigger) throws JobPersistenceException {
-        throw new UnsupportedOperationException("replaceTrigger");
+        return executeInLock("replaceTrigger", LOCK_TRIGGER_ACCESS, () -> {
+            Optional<JobDetail> triggerJob = couchbase.retrieveTriggerJob(triggerKey);
+            if (triggerJob.isEmpty()) {
+                return false;
+            }
+
+            boolean removed = couchbase.removeTrigger(triggerKey);
+            couchbase.storeJob(triggerJob.get(), false);
+            couchbase.storeTrigger(newTrigger, READY, false);
+            return removed;
+        });
     }
 
     public OperableTrigger retrieveTrigger(TriggerKey triggerKey) throws JobPersistenceException {
