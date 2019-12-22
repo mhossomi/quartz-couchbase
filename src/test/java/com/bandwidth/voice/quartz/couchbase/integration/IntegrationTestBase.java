@@ -17,10 +17,12 @@ import org.junit.Rule;
 import org.junit.rules.TestName;
 import org.junit.rules.Timeout;
 import org.quartz.JobBuilder;
+import org.quartz.JobKey;
 import org.quartz.Scheduler;
 import org.quartz.SchedulerException;
 import org.quartz.SchedulerFactory;
 import org.quartz.TriggerBuilder;
+import org.quartz.TriggerKey;
 import org.quartz.impl.StdSchedulerFactory;
 import org.quartz.simpl.SimpleThreadPool;
 
@@ -35,7 +37,8 @@ public class IntegrationTestBase {
             properties.load(Optional.of(IntegrationTestBase.class.getClassLoader())
                     .map(loader -> loader.getResourceAsStream("config.properties"))
                     .orElseThrow(() -> new RuntimeException("Could not find config.properties")));
-        } catch (Exception e) {
+        }
+        catch (Exception e) {
             throw new RuntimeException("Failed to load properties", e);
         }
     }
@@ -88,13 +91,15 @@ public class IntegrationTestBase {
     public ListenableJob.Listener schedule(JobBuilder job, TriggerBuilder<?> trigger) throws SchedulerException {
         int i = counter.getAndIncrement();
         return ListenableJob.schedule(scheduler,
-                job.withIdentity(alias + "-" + i, getClass().getSimpleName()),
-                trigger.withIdentity(alias + "-" + i, getClass().getSimpleName()));
+                job.withIdentity(jobKey(i)),
+                trigger.withIdentity(triggerKey(i)));
     }
 
-    public ListenableJob.Listener schedule(TriggerBuilder<?> trigger) throws SchedulerException {
-        int i = counter.getAndIncrement();
-        return ListenableJob.schedule(scheduler,
-                trigger.withIdentity(alias + "-" + i, getClass().getSimpleName()));
+    public TriggerKey triggerKey(int i) {
+        return TriggerKey.triggerKey(alias + "-" + i, getClass().getSimpleName());
+    }
+
+    public JobKey jobKey(int i) {
+        return JobKey.jobKey(alias + "-" + i, getClass().getSimpleName());
     }
 }

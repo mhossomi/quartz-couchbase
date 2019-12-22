@@ -67,10 +67,12 @@ public class ListenableJob implements Job {
         private final BlockingQueue<CompletableFuture<JobExecutionContext>> futures = new LinkedBlockingQueue<>();
 
         public CompletableFuture<JobExecutionContext> await() {
-            CompletableFuture<JobExecutionContext> future = new CompletableFuture<>();
-            future.whenComplete((context, e) -> assertThat(context.getJobDetail().getKey()).isEqualTo(key));
+            var future = new CompletableFuture<JobExecutionContext>();
             futures.add(future);
-            return future;
+            return future.thenApply(context -> {
+                assertThat(context.getJobDetail().getKey()).isEqualTo(key);
+                return context;
+            });
         }
     }
 }

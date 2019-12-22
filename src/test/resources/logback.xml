@@ -4,7 +4,7 @@
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
             <pattern>
-                %d{yyyy-MM-dd HH:mm:ss} | %highlight(%-5level) | %yellow(%-50thread) | %cyan(%-40logger{40}) - %msg%n
+                %d{yyyy-MM-dd HH:mm:ss.SSS} | %highlight(%-5level) | %yellow(%-50thread) | %cyan(%-40logger{40}) - %msg%n
             </pattern>
         </encoder>
     </appender>
