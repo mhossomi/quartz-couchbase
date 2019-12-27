@@ -24,7 +24,7 @@ public class CouchbaseUtils {
                 : null;
     }
 
-    static String lockId(String schedulerName, String lockName) {
+    public static String lockId(String schedulerName, String lockName) {
         return String.format("L.%s.%s", schedulerName, lockName);
     }
 

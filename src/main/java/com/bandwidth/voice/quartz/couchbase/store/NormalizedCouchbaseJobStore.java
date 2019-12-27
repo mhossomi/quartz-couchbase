@@ -1,4 +1,4 @@
-package com.bandwidth.voice.quartz.couchbase;
+package com.bandwidth.voice.quartz.couchbase.store;
 
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.sleepQuietly;
 import static com.bandwidth.voice.quartz.couchbase.TriggerState.ACQUIRED;
@@ -6,8 +6,10 @@ import static com.bandwidth.voice.quartz.couchbase.TriggerState.COMPLETE;
 import static com.bandwidth.voice.quartz.couchbase.TriggerState.ERROR;
 import static com.bandwidth.voice.quartz.couchbase.TriggerState.READY;
 
-import com.bandwidth.voice.quartz.couchbase.CouchbaseDelegate.AcquiredLock;
-import com.couchbase.client.java.Cluster;
+import com.bandwidth.voice.quartz.couchbase.LockException;
+import com.bandwidth.voice.quartz.couchbase.store.NormalizedCouchbaseDelegate.AcquiredLock;
+import com.couchbase.client.java.Bucket;
+import com.couchbase.client.java.CouchbaseCluster;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
@@ -30,7 +32,6 @@ import org.quartz.Trigger.CompletedExecutionInstruction;
 import org.quartz.TriggerKey;
 import org.quartz.impl.matchers.GroupMatcher;
 import org.quartz.spi.ClassLoadHelper;
-import org.quartz.spi.JobStore;
 import org.quartz.spi.OperableTrigger;
 import org.quartz.spi.SchedulerSignaler;
 import org.quartz.spi.TriggerFiredBundle;
@@ -38,20 +39,10 @@ import org.quartz.spi.TriggerFiredResult;
 
 @Slf4j
 @NoArgsConstructor
-public class CouchbaseJobStore implements JobStore {
+public class NormalizedCouchbaseJobStore extends CouchbaseJobStore {
 
     private static final String LOCK_TRIGGER_ACCESS = "trigger-access";
 
-    @Setter
-    private static Cluster cluster;
-    @Setter
-    private String bucketName;
-    @Setter
-    private String bucketPassword;
-    @Setter
-    private String instanceName;
-    @Setter
-    private String instanceId;
     @Setter
     private int maxLockTime = 5;
     @Setter
@@ -60,18 +51,19 @@ public class CouchbaseJobStore implements JobStore {
     private int maxAcquireRetries = 3;
     @Setter
     private int lockRetryDelay = 100;
-    @Setter
-    private int threadPoolSize;
 
-    private CouchbaseDelegate couchbase;
+    private NormalizedCouchbaseDelegate couchbase;
 
     public void initialize(ClassLoadHelper loadHelper, SchedulerSignaler signaler) throws SchedulerConfigException {
         log.info("Initializing {} with bucket '{}'", getClass().getSimpleName(), bucketName);
-        couchbase = CouchbaseDelegate.builder()
+        CouchbaseCluster cluster = CouchbaseCluster.create(getEnvironment(), clusterNodes)
+                .authenticate(clusterUsername, clusterPassword);
+        Bucket bucket = Optional.ofNullable(bucketPassword)
+                .map(password -> cluster.openBucket(bucketName, password))
+                .orElseGet(() -> cluster.openBucket(bucketName));
+        couchbase = NormalizedCouchbaseDelegate.builder()
                 .schedulerName(instanceName)
-                .bucket(Optional.ofNullable(bucketPassword)
-                        .map(password -> cluster.openBucket(bucketName, password))
-                        .orElseGet(() -> cluster.openBucket(bucketName)))
+                .bucket(bucket)
                 .maxLockTime(maxLockTime)
                 .build();
     }

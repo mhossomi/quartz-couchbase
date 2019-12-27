@@ -3,19 +3,24 @@ package com.bandwidth.voice.quartz.couchbase.integration;
 import static java.lang.String.format;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
-import com.bandwidth.voice.quartz.couchbase.CouchbaseJobStore;
 import com.bandwidth.voice.quartz.couchbase.integration.job.ListenableJob;
-import com.couchbase.client.java.CouchbaseCluster;
+import com.bandwidth.voice.quartz.couchbase.store.DenormalizedCouchbaseJobStore;
+import com.bandwidth.voice.quartz.couchbase.store.NormalizedCouchbaseJobStore;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import lombok.RequiredArgsConstructor;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.rules.TestName;
 import org.junit.rules.Timeout;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
+import org.junit.runners.Parameterized.Parameters;
 import org.quartz.JobBuilder;
 import org.quartz.JobKey;
 import org.quartz.Scheduler;
@@ -25,43 +30,31 @@ import org.quartz.TriggerBuilder;
 import org.quartz.TriggerKey;
 import org.quartz.impl.StdSchedulerFactory;
 import org.quartz.simpl.SimpleThreadPool;
+import org.quartz.spi.JobStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@RequiredArgsConstructor
+@RunWith(Parameterized.class)
 public abstract class IntegrationTestBase {
 
-    private final static Properties properties;
-
-    protected final Logger log = LoggerFactory.getLogger(getClass());
-
-    static {
-        try {
-            properties = new Properties();
-            properties.load(Optional.of(IntegrationTestBase.class.getClassLoader())
-                    .map(loader -> loader.getResourceAsStream("config.properties"))
-                    .orElseThrow(() -> new RuntimeException("Could not find config.properties")));
-        }
-        catch (Exception e) {
-            throw new RuntimeException("Failed to load properties", e);
-        }
-    }
+    protected final static Properties properties = loadProperties();
 
     @Rule
     public TestName testName = new TestName();
     @Rule
     public Timeout timeout = new Timeout(10, SECONDS);
 
+    protected final Logger log = LoggerFactory.getLogger(getClass());
+    protected final AtomicInteger counter = new AtomicInteger(0);
+    protected final Class<? extends JobStore> jobStoreClass;
+
     protected Scheduler scheduler;
     protected String alias;
-    protected AtomicInteger counter = new AtomicInteger(0);
 
-    @BeforeClass
-    public static void setupCouchbase() {
-        CouchbaseJobStore.setCluster(CouchbaseCluster
-                .create(properties.getProperty("couchbase.endpoint"))
-                .authenticate(
-                        properties.getProperty("couchbase.username"),
-                        properties.getProperty("couchbase.password")));
+    @Parameters(name = "{0}")
+    public static Collection<Class<? extends JobStore>> parameters() {
+        return List.of(NormalizedCouchbaseJobStore.class, DenormalizedCouchbaseJobStore.class);
     }
 
     @Before
@@ -74,9 +67,12 @@ public abstract class IntegrationTestBase {
         schedulerProperties.put("org.quartz.scheduler.instanceName", getClass().getSimpleName() + "." + alias);
         schedulerProperties.put("org.quartz.scheduler.threadName", getClass().getSimpleName() + "." + alias);
         schedulerProperties.put("org.quartz.scheduler.idleWaitTime", "1000");
-        schedulerProperties.put("org.quartz.jobStore.class", CouchbaseJobStore.class.getName());
         schedulerProperties.put("org.quartz.threadPool.class", SimpleThreadPool.class.getName());
         schedulerProperties.put("org.quartz.threadPool.threadCount", "3");
+        schedulerProperties.put("org.quartz.jobStore.class", jobStoreClass.getName());
+        schedulerProperties.put("org.quartz.jobStore.clusterNodes", properties.getProperty("couchbase.nodes"));
+        schedulerProperties.put("org.quartz.jobStore.clusterUsername", properties.getProperty("couchbase.username"));
+        schedulerProperties.put("org.quartz.jobStore.clusterPassword", properties.getProperty("couchbase.password"));
         schedulerProperties.put("org.quartz.jobStore.bucketName", properties.getProperty("couchbase.bucket"));
 
         SchedulerFactory factory = new StdSchedulerFactory(schedulerProperties);
@@ -104,5 +100,18 @@ public abstract class IntegrationTestBase {
 
     public JobKey jobKey(int i) {
         return JobKey.jobKey(alias + "-" + i, getClass().getSimpleName());
+    }
+
+    private static Properties loadProperties() {
+        try {
+            Properties properties = new Properties();
+            properties.load(Optional.of(IntegrationTestBase.class.getClassLoader())
+                    .map(loader -> loader.getResourceAsStream("config.properties"))
+                    .orElseThrow(() -> new RuntimeException("Could not find config.properties")));
+            return properties;
+        }
+        catch (Exception e) {
+            throw new RuntimeException("Failed to load properties", e);
+        }
     }
 }

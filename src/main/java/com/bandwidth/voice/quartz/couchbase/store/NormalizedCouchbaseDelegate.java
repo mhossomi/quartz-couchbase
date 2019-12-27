@@ -1,4 +1,4 @@
-package com.bandwidth.voice.quartz.couchbase;
+package com.bandwidth.voice.quartz.couchbase.store;
 
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.allOf;
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.e;
@@ -17,6 +17,9 @@ import static java.util.stream.Collectors.toList;
 import static org.quartz.JobBuilder.newJob;
 import static org.quartz.TriggerKey.triggerKey;
 
+import com.bandwidth.voice.quartz.couchbase.CouchbaseUtils;
+import com.bandwidth.voice.quartz.couchbase.LockException;
+import com.bandwidth.voice.quartz.couchbase.TriggerState;
 import com.bandwidth.voice.quartz.couchbase.converter.SimpleTriggerConverter;
 import com.bandwidth.voice.quartz.couchbase.converter.TriggerConverter;
 import com.couchbase.client.core.CouchbaseException;
@@ -51,14 +54,14 @@ import org.quartz.spi.OperableTrigger;
 
 @Slf4j
 @Builder
-public class CouchbaseDelegate {
+public class NormalizedCouchbaseDelegate {
 
     @NonNull
     private final String schedulerName;
     @NonNull
     private final Bucket bucket;
     @NonNull
-    private final int maxLockTime;
+    private final Integer maxLockTime;
 
     private final Set<TriggerConverter<?>> triggerConverters = Set.of(
             new SimpleTriggerConverter());

@@ -15,10 +15,15 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeoutException;
 import org.junit.Before;
 import org.junit.Test;
+import org.quartz.spi.JobStore;
 
 public class SchedulerTest extends IntegrationTestBase {
 
     private ExecutorService executor;
+
+    public SchedulerTest(Class<? extends JobStore> jobStoreClass) {
+        super(jobStoreClass);
+    }
 
     @Before
     public void setupExecutor() {

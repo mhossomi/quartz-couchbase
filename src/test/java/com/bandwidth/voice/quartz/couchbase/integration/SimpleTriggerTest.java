@@ -12,9 +12,14 @@ import java.util.concurrent.CompletableFuture;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
 import org.quartz.SchedulerException;
+import org.quartz.spi.JobStore;
 
 @Slf4j
 public class SimpleTriggerTest extends IntegrationTestBase {
+
+    public SimpleTriggerTest(Class<? extends JobStore> jobStoreClass) {
+        super(jobStoreClass);
+    }
 
     @Test
     public void runsJobNow() throws Exception {
