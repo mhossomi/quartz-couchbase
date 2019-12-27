@@ -1,8 +1,10 @@
 package com.bandwidth.voice.quartz.couchbase.integration.job;
 
+import static java.util.stream.Collectors.toSet;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -17,7 +19,6 @@ import org.quartz.JobExecutionContext;
 import org.quartz.JobKey;
 import org.quartz.Scheduler;
 import org.quartz.SchedulerException;
-import org.quartz.Trigger;
 import org.quartz.TriggerBuilder;
 
 @Slf4j
@@ -32,11 +33,11 @@ public class ListenableJob implements Job {
         return listeners.computeIfAbsent(job.getKey(), Listener::new);
     }
 
-    public static Listener schedule(Scheduler scheduler, TriggerBuilder<?> triggerBuilder)
+    public static Listener schedule(Scheduler scheduler, JobBuilder jobBuilder, Set<TriggerBuilder<?>> triggerBuilders)
             throws SchedulerException {
-        Trigger trigger = triggerBuilder.build();
-        scheduler.scheduleJob(trigger);
-        return listeners.computeIfAbsent(trigger.getJobKey(), Listener::new);
+        JobDetail job = jobBuilder.ofType(ListenableJob.class).build();
+        scheduler.scheduleJob(job, triggerBuilders.stream().map(TriggerBuilder::build).collect(toSet()), false);
+        return listeners.computeIfAbsent(job.getKey(), Listener::new);
     }
 
     @Override

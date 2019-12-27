@@ -240,7 +240,7 @@ public class NormalizedCouchbaseDelegate {
             JobKey jobKey = triggerJobKey.get();
             int count = countAll(allOf(
                     i("jobName").eq(s(jobKey.getName())),
-                    i("jobGroup").eq(s(jobKey.getName()))));
+                    i("jobGroup").eq(s(jobKey.getGroup()))));
             log.debug("Job {} has {} triggers", jobKey, count);
 
             if (count == 0) {

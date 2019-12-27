@@ -8,16 +8,13 @@ import com.bandwidth.voice.quartz.couchbase.TriggerState;
 import com.bandwidth.voice.quartz.couchbase.converter.SimpleTriggerConverter;
 import com.bandwidth.voice.quartz.couchbase.converter.TriggerConverter;
 import com.couchbase.client.core.CouchbaseException;
-import com.couchbase.client.core.message.kv.subdoc.multi.Lookup;
 import com.couchbase.client.java.Bucket;
 import com.couchbase.client.java.document.JsonDocument;
 import com.couchbase.client.java.document.json.JsonArray;
 import com.couchbase.client.java.document.json.JsonObject;
-import com.couchbase.client.java.error.DocumentDoesNotExistException;
 import com.couchbase.client.java.query.N1qlQueryResult;
 import com.couchbase.client.java.query.Statement;
 import com.couchbase.client.java.query.dsl.Expression;
-import com.couchbase.client.java.subdoc.DocumentFragment;
 import java.util.Set;
 import lombok.Builder;
 import lombok.NonNull;
@@ -52,14 +49,14 @@ public class DenormalizedCouchbaseDelegate {
 
     public void storeJobWithTrigger(JobDetail job, OperableTrigger trigger) {
         String jobId = job.getKey().toString();
-        try {
-            DocumentFragment<Lookup> document = bucket.lookupIn(jobId)
-                    .get("triggers.id")
-                    .execute();
-        }
-        catch (DocumentDoesNotExistException e) {
+        JsonDocument document = bucket.get(jobId);
+        if (document == null) {
             bucket.insert(JsonDocument.create(jobId, convertJob(job)
                     .put("triggers", JsonArray.from(convertTrigger(trigger)))));
+        }
+        else {
+            document.content().getArray("triggers").add(convertTrigger(trigger));
+            bucket.replace(document);
         }
     }
 

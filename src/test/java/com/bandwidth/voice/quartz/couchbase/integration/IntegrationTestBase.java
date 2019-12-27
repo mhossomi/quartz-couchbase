@@ -2,6 +2,8 @@ package com.bandwidth.voice.quartz.couchbase.integration;
 
 import static java.lang.String.format;
 import static java.util.concurrent.TimeUnit.SECONDS;
+import static java.util.stream.Collectors.toSet;
+import static java.util.stream.IntStream.range;
 
 import com.bandwidth.voice.quartz.couchbase.integration.job.ListenableJob;
 import com.bandwidth.voice.quartz.couchbase.store.DenormalizedCouchbaseJobStore;
@@ -94,8 +96,21 @@ public abstract class IntegrationTestBase {
                 trigger.withIdentity(triggerKey(i)));
     }
 
+    public ListenableJob.Listener schedule(JobBuilder job, TriggerBuilder<?>... triggers) throws SchedulerException {
+        int i = counter.getAndIncrement();
+        return ListenableJob.schedule(scheduler,
+                job.withIdentity(jobKey(i)),
+                range(0, triggers.length)
+                        .mapToObj(j -> triggers[j].withIdentity(triggerKey(i, j)))
+                        .collect(toSet()));
+    }
+
     public TriggerKey triggerKey(int i) {
-        return TriggerKey.triggerKey(alias + "-" + i, getClass().getSimpleName());
+        return TriggerKey.triggerKey(format("%s-%d", alias, i), getClass().getSimpleName());
+    }
+
+    public TriggerKey triggerKey(int i, int j) {
+        return TriggerKey.triggerKey(format("%s-%d-%d", alias, i, j), getClass().getSimpleName());
     }
 
     public JobKey jobKey(int i) {

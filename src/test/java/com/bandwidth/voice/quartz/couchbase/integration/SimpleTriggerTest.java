@@ -97,4 +97,14 @@ public class SimpleTriggerTest extends IntegrationTestBase {
                 runMany.expectExecution())
                 .get(5000, MILLISECONDS);
     }
+
+    @Test
+    public void runsJobWithMultipleTriggers() throws Exception {
+        ListenableJob.Listener listener = schedule(
+                newJob(),
+                newTrigger().startNow(),
+                newTrigger().startAt(from(now().plusMillis(1500))));
+        listener.expectExecution().get(2000, MILLISECONDS);
+        listener.expectExecution().get(2000, MILLISECONDS);
+    }
 }
