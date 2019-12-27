@@ -1,4 +1,4 @@
-package com.bandwidth.voice.quartz.couchbase.integration;
+package com.bandwidth.voice.quartz.couchbase.integration.job;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -25,14 +25,14 @@ public class ListenableJob implements Job {
 
     private static Map<JobKey, Listener> listeners = new ConcurrentHashMap<>();
 
-    static Listener schedule(Scheduler scheduler, JobBuilder jobBuilder, TriggerBuilder<?> triggerBuilder)
+    public static Listener schedule(Scheduler scheduler, JobBuilder jobBuilder, TriggerBuilder<?> triggerBuilder)
             throws SchedulerException {
         JobDetail job = jobBuilder.ofType(ListenableJob.class).build();
         scheduler.scheduleJob(job, triggerBuilder.build());
         return listeners.computeIfAbsent(job.getKey(), Listener::new);
     }
 
-    static Listener schedule(Scheduler scheduler, TriggerBuilder<?> triggerBuilder)
+    public static Listener schedule(Scheduler scheduler, TriggerBuilder<?> triggerBuilder)
             throws SchedulerException {
         Trigger trigger = triggerBuilder.build();
         scheduler.scheduleJob(trigger);
@@ -66,7 +66,7 @@ public class ListenableJob implements Job {
         private final JobKey key;
         private final BlockingQueue<CompletableFuture<JobExecutionContext>> futures = new LinkedBlockingQueue<>();
 
-        public CompletableFuture<JobExecutionContext> await() {
+        public CompletableFuture<JobExecutionContext> expectExecution() {
             var future = new CompletableFuture<JobExecutionContext>();
             futures.add(future);
             return future.thenApply(context -> {

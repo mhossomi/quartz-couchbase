@@ -4,12 +4,12 @@ import static java.lang.String.format;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.bandwidth.voice.quartz.couchbase.CouchbaseJobStore;
+import com.bandwidth.voice.quartz.couchbase.integration.job.ListenableJob;
 import com.couchbase.client.java.CouchbaseCluster;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
-import lombok.extern.slf4j.Slf4j;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -25,11 +25,14 @@ import org.quartz.TriggerBuilder;
 import org.quartz.TriggerKey;
 import org.quartz.impl.StdSchedulerFactory;
 import org.quartz.simpl.SimpleThreadPool;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-@Slf4j
-public class IntegrationTestBase {
+public abstract class IntegrationTestBase {
 
-    private static Properties properties;
+    private final static Properties properties;
+
+    protected final Logger log = LoggerFactory.getLogger(getClass());
 
     static {
         try {

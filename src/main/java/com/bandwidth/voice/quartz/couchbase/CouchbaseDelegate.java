@@ -35,6 +35,8 @@ import com.couchbase.client.java.query.dsl.Expression;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import lombok.Builder;
+import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.quartz.Job;
@@ -48,11 +50,15 @@ import org.quartz.TriggerKey;
 import org.quartz.spi.OperableTrigger;
 
 @Slf4j
-@RequiredArgsConstructor
+@Builder
 public class CouchbaseDelegate {
 
+    @NonNull
     private final String schedulerName;
+    @NonNull
     private final Bucket bucket;
+    @NonNull
+    private final int maxLockTime;
 
     private final Set<TriggerConverter<?>> triggerConverters = Set.of(
             new SimpleTriggerConverter());
@@ -125,7 +131,8 @@ public class CouchbaseDelegate {
         }
     }
 
-    public void storeTrigger(OperableTrigger trigger, TriggerState state, boolean replaceExisting) throws JobPersistenceException {
+    public void storeTrigger(OperableTrigger trigger, TriggerState state, boolean replaceExisting)
+            throws JobPersistenceException {
         try {
             insertOrUpsert(replaceExisting, JsonDocument.create(
                     triggerId(trigger.getKey()),
@@ -348,10 +355,10 @@ public class CouchbaseDelegate {
             Document<?> newLock = JsonDocument.create(lockId);
 
             try {
-                Document<?> acquiredLock = bucket.getAndLock(newLock, 5);
+                Document<?> acquiredLock = bucket.getAndLock(newLock, maxLockTime);
                 if (acquiredLock == null) {
                     bucket.insert(newLock);
-                    lock = bucket.getAndLock(newLock, 5);
+                    lock = bucket.getAndLock(newLock, maxLockTime);
                 }
                 else {
                     lock = acquiredLock;

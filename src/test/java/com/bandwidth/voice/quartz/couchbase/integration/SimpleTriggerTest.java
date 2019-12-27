@@ -7,6 +7,7 @@ import static org.quartz.JobBuilder.newJob;
 import static org.quartz.SimpleScheduleBuilder.simpleSchedule;
 import static org.quartz.TriggerBuilder.newTrigger;
 
+import com.bandwidth.voice.quartz.couchbase.integration.job.ListenableJob;
 import java.util.concurrent.CompletableFuture;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
@@ -20,7 +21,7 @@ public class SimpleTriggerTest extends IntegrationTestBase {
         ListenableJob.Listener listener = schedule(
                 newJob(),
                 newTrigger().startNow());
-        listener.await().get(1000, MILLISECONDS);
+        listener.expectExecution().get(1000, MILLISECONDS);
     }
 
     @Test
@@ -29,7 +30,7 @@ public class SimpleTriggerTest extends IntegrationTestBase {
                 newJob(),
                 newTrigger()
                         .startAt(from(now().plusMillis(1500))));
-        listener.await().get(1500, MILLISECONDS);
+        listener.expectExecution().get(1500, MILLISECONDS);
     }
 
     @Test
@@ -41,9 +42,9 @@ public class SimpleTriggerTest extends IntegrationTestBase {
                         .withSchedule(simpleSchedule()
                                 .withRepeatCount(2)
                                 .withIntervalInMilliseconds(500)));
-        listener.await().get(500, MILLISECONDS);
-        listener.await().get(500, MILLISECONDS);
-        listener.await().get(500, MILLISECONDS);
+        listener.expectExecution().get(500, MILLISECONDS);
+        listener.expectExecution().get(500, MILLISECONDS);
+        listener.expectExecution().get(500, MILLISECONDS);
     }
 
     @Test
@@ -51,7 +52,7 @@ public class SimpleTriggerTest extends IntegrationTestBase {
         ListenableJob.Listener listener = schedule(
                 newJob(),
                 newTrigger().startNow());
-        listener.await().thenAccept(context -> {
+        listener.expectExecution().thenAccept(context -> {
             try {
                 log.info("Rescheduling: {}", context.getJobDetail().getKey());
                 context.getScheduler().rescheduleJob(
@@ -62,7 +63,7 @@ public class SimpleTriggerTest extends IntegrationTestBase {
                 throw new RuntimeException(e);
             }
         }).get(1000, MILLISECONDS);
-        listener.await().get(1000, MILLISECONDS);
+        listener.expectExecution().get(1000, MILLISECONDS);
     }
 
     @Test
@@ -84,11 +85,11 @@ public class SimpleTriggerTest extends IntegrationTestBase {
                                 .withIntervalInMilliseconds(1000)));
 
         CompletableFuture.allOf(
-                runNow.await(),
-                runLater.await(),
-                runMany.await(),
-                runMany.await(),
-                runMany.await())
+                runNow.expectExecution(),
+                runLater.expectExecution(),
+                runMany.expectExecution(),
+                runMany.expectExecution(),
+                runMany.expectExecution())
                 .get(5000, MILLISECONDS);
     }
 }

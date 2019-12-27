@@ -7,7 +7,6 @@ import static com.bandwidth.voice.quartz.couchbase.TriggerState.ERROR;
 import static com.bandwidth.voice.quartz.couchbase.TriggerState.READY;
 
 import com.bandwidth.voice.quartz.couchbase.CouchbaseDelegate.AcquiredLock;
-import com.couchbase.client.java.Bucket;
 import com.couchbase.client.java.Cluster;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -41,8 +40,6 @@ import org.quartz.spi.TriggerFiredResult;
 @NoArgsConstructor
 public class CouchbaseJobStore implements JobStore {
 
-    private static final int MAX_LOCK_TRIES = 3;
-    private static final int MAX_ACQUIRE_TRIES = 3;
     private static final String LOCK_TRIGGER_ACCESS = "trigger-access";
 
     @Setter
@@ -56,16 +53,27 @@ public class CouchbaseJobStore implements JobStore {
     @Setter
     private String instanceId;
     @Setter
+    private int maxLockTime = 5;
+    @Setter
+    private int maxLockRetries = 10;
+    @Setter
+    private int maxAcquireRetries = 3;
+    @Setter
+    private int lockRetryDelay = 100;
+    @Setter
     private int threadPoolSize;
 
     private CouchbaseDelegate couchbase;
 
     public void initialize(ClassLoadHelper loadHelper, SchedulerSignaler signaler) throws SchedulerConfigException {
         log.info("Initializing {} with bucket '{}'", getClass().getSimpleName(), bucketName);
-        Bucket bucket = Optional.ofNullable(bucketPassword)
-                .map(password -> cluster.openBucket(bucketName, password))
-                .orElseGet(() -> cluster.openBucket(bucketName));
-        couchbase = new CouchbaseDelegate(instanceName, bucket);
+        couchbase = CouchbaseDelegate.builder()
+                .schedulerName(instanceName)
+                .bucket(Optional.ofNullable(bucketPassword)
+                        .map(password -> cluster.openBucket(bucketName, password))
+                        .orElseGet(() -> cluster.openBucket(bucketName)))
+                .maxLockTime(maxLockTime)
+                .build();
     }
 
     public void schedulerStarted() throws SchedulerException {
@@ -104,9 +112,6 @@ public class CouchbaseJobStore implements JobStore {
             couchbase.storeJob(job, false);
             couchbase.storeTrigger(trigger, READY, false);
             return null;
-        }, () -> {
-            couchbase.removeJob(job.getKey());
-            couchbase.removeTrigger(trigger.getKey());
         });
     }
 
@@ -121,14 +126,6 @@ public class CouchbaseJobStore implements JobStore {
                 }
             }
             return null;
-        }, () -> {
-            for (var triggerAndJob : triggersAndJobs.entrySet()) {
-                if (couchbase.removeJob(triggerAndJob.getKey().getKey())) {
-                    for (Trigger trigger : triggerAndJob.getValue()) {
-                        couchbase.removeTrigger(trigger.getKey());
-                    }
-                }
-            }
         });
     }
 
@@ -328,8 +325,8 @@ public class CouchbaseJobStore implements JobStore {
         log.trace("acquireNextTriggers: {}, {}, {}", noLaterThan, maxCount, timeWindow);
 
         List<OperableTrigger> triggers = new ArrayList<>();
-        for (int tries = 0; tries < MAX_ACQUIRE_TRIES && triggers.isEmpty(); tries++) {
-            log.trace("Attempt {}/{} to acquire next triggers", tries, MAX_ACQUIRE_TRIES);
+        for (int tries = 0; tries < maxAcquireRetries && triggers.isEmpty(); tries++) {
+            log.trace("Attempt {}/{} to acquire next triggers", tries, maxAcquireRetries);
             long maxNextFireTime = Math.max(noLaterThan, System.currentTimeMillis()) + timeWindow;
 
             List<TriggerKey> triggerKeys = couchbase.selectTriggerKeys(
@@ -403,40 +400,31 @@ public class CouchbaseJobStore implements JobStore {
     private <T> T executeInLock(
             String lockerName, String lockName, PersistenceSupplier<T> action)
             throws JobPersistenceException {
-        return executeInLock(lockerName, lockName, action, () -> { });
-    }
-
-    private <T> T executeInLock(
-            String lockerName, String lockName, PersistenceSupplier<T> action, PersistenceRunnable rollback)
-            throws JobPersistenceException {
         int tries = 0;
         do {
             tries++;
             try (AcquiredLock lock = couchbase.getLock(lockerName, lockName)) {
+                log.debug("[{}] Acquired lock {}", lockerName, lockName);
                 return action.get();
             }
             catch (LockException e) {
                 if (e.isRetriable()) {
                     log.warn("[{}] Failed to acquire lock {} (attempt {}/{})",
-                            lockerName, lockName, tries, MAX_LOCK_TRIES, e);
-                    sleepQuietly(100);
+                            lockerName, lockName, tries, maxLockRetries, e);
+                    sleepQuietly(lockRetryDelay);
                 }
                 else {
                     log.error("[{}] Failed to acquire lock {}", lockerName, lockName, e);
                     throw e;
                 }
             }
-            catch (Exception e) {
-                log.warn("[{}] Execution failed!", lockerName, e);
-                rollback.run();
-                throw e;
-            }
         }
-        while (tries < MAX_LOCK_TRIES);
+        while (tries < maxLockRetries);
 
-        rollback.run();
+        log.error("[{}] Failed to acquire lock {} after {} attempts",
+                lockerName, lockName, maxLockRetries);
         throw new JobPersistenceException(String.format("[%s] Failed to acquire lock %s after %d attempts.",
-                lockerName, lockName, MAX_LOCK_TRIES));
+                lockerName, lockName, maxLockRetries));
     }
 
     private <T> T retryWhileAvailable(PersistenceSupplier<T> action) {
