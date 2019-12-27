@@ -91,17 +91,19 @@ public abstract class IntegrationTestBase {
 
     public ListenableJob.Listener schedule(JobBuilder job, TriggerBuilder<?> trigger) throws SchedulerException {
         int i = counter.getAndIncrement();
+        String description = getClass().getSimpleName() + "." + testName.getMethodName();
         return ListenableJob.schedule(scheduler,
-                job.withIdentity(jobKey(i)),
-                trigger.withIdentity(triggerKey(i)));
+                job.withIdentity(jobKey(i)).withDescription(description),
+                trigger.withIdentity(triggerKey(i)).withDescription(description));
     }
 
     public ListenableJob.Listener schedule(JobBuilder job, TriggerBuilder<?>... triggers) throws SchedulerException {
         int i = counter.getAndIncrement();
+        String description = getClass().getSimpleName() + "." + testName.getMethodName();
         return ListenableJob.schedule(scheduler,
-                job.withIdentity(jobKey(i)),
+                job.withIdentity(jobKey(i)).withDescription(description),
                 range(0, triggers.length)
-                        .mapToObj(j -> triggers[j].withIdentity(triggerKey(i, j)))
+                        .mapToObj(j -> triggers[j].withIdentity(triggerKey(i, j)).withDescription(description))
                         .collect(toSet()));
     }
 
