@@ -232,15 +232,6 @@ public class NormalizedCouchbaseDelegate extends CouchbaseDelegate {
         return true;
     }
 
-    private void insertOrUpsert(boolean upsert, JsonDocument document) {
-        if (upsert) {
-            bucket.upsert(document);
-        }
-        else {
-            bucket.insert(document);
-        }
-    }
-
     private TriggerState getTriggerState(JsonObject trigger) {
         return TriggerState.valueOf(trigger.getString("state"));
     }

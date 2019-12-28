@@ -86,16 +86,14 @@ public class DenormalizedCouchbaseJobStore extends CouchbaseJobStore {
 
     public void storeJobAndTrigger(JobDetail job, OperableTrigger trigger) throws JobPersistenceException {
         log.trace("storeJobAndTrigger: {}, {}", job, trigger);
-        couchbase.storeJobWithTrigger(job, trigger, READY);
+        couchbase.storeJobWithTriggers(job, Set.of(trigger), READY, false);
     }
 
     public void storeJobsAndTriggers(Map<JobDetail, Set<? extends Trigger>> triggersAndJobs, boolean replace)
             throws JobPersistenceException {
         log.trace("storeJobsAndTriggers: {}, {}", triggersAndJobs, replace);
         for (var triggerAndJob : triggersAndJobs.entrySet()) {
-            for (Trigger trigger : triggerAndJob.getValue()) {
-                couchbase.storeJobWithTrigger(triggerAndJob.getKey(), (OperableTrigger) trigger, READY);
-            }
+            couchbase.storeJobWithTriggers(triggerAndJob.getKey(), triggerAndJob.getValue(), READY, true);
         }
     }
 

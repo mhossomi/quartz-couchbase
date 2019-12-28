@@ -35,7 +35,7 @@ public class SimpleTriggerTest extends IntegrationTestBase {
                 newJob(),
                 newTrigger()
                         .startAt(from(now().plusMillis(1500))));
-        listener.expectExecution().get(1500, MILLISECONDS);
+        listener.expectExecution().get(3000, MILLISECONDS);
     }
 
     @Test
@@ -47,9 +47,9 @@ public class SimpleTriggerTest extends IntegrationTestBase {
                         .withSchedule(simpleSchedule()
                                 .withRepeatCount(2)
                                 .withIntervalInMilliseconds(500)));
-        listener.expectExecution().get(500, MILLISECONDS);
-        listener.expectExecution().get(500, MILLISECONDS);
-        listener.expectExecution().get(500, MILLISECONDS);
+        listener.expectExecution().get(1000, MILLISECONDS);
+        listener.expectExecution().get(1000, MILLISECONDS);
+        listener.expectExecution().get(1000, MILLISECONDS);
     }
 
     @Test
@@ -95,7 +95,7 @@ public class SimpleTriggerTest extends IntegrationTestBase {
                 runMany.expectExecution(),
                 runMany.expectExecution(),
                 runMany.expectExecution())
-                .get(5000, MILLISECONDS);
+                .get(3000, MILLISECONDS);
     }
 
     @Test

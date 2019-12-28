@@ -9,6 +9,7 @@ import com.bandwidth.voice.quartz.couchbase.converter.SimpleTriggerConverter;
 import com.bandwidth.voice.quartz.couchbase.converter.TriggerConverter;
 import com.couchbase.client.core.CouchbaseException;
 import com.couchbase.client.java.Bucket;
+import com.couchbase.client.java.document.JsonDocument;
 import com.couchbase.client.java.document.json.JsonObject;
 import com.couchbase.client.java.query.N1qlQueryResult;
 import com.couchbase.client.java.query.Statement;
@@ -93,6 +94,15 @@ public abstract class CouchbaseDelegate {
                 .findAny()
                 .orElseThrow(() -> new IllegalArgumentException("No converter found for trigger type " + type))
                 .convert(jobKey, object);
+    }
+
+    protected void insertOrUpsert(boolean upsert, JsonDocument document) {
+        if (upsert) {
+            bucket.upsert(document);
+        }
+        else {
+            bucket.insert(document);
+        }
     }
 
     protected N1qlQueryResult query(Statement query) throws JobPersistenceException {
