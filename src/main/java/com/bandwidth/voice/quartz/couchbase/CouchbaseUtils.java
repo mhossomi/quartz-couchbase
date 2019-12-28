@@ -1,6 +1,7 @@
 package com.bandwidth.voice.quartz.couchbase;
 
 import static com.couchbase.client.java.query.dsl.Expression.TRUE;
+import static com.couchbase.client.java.query.dsl.Expression.path;
 import static com.couchbase.client.java.query.dsl.Expression.s;
 import static java.util.Arrays.stream;
 
@@ -46,6 +47,20 @@ public class CouchbaseUtils {
         return stream(exs)
                 .skip(1)
                 .reduce(exs[0], Expression::and, Expression::and);
+    }
+
+    public static Expression concat(Expression... exs) {
+        if (exs.length == 0) { return Expression.s(); }
+        if (exs.length == 1) { return exs[0]; }
+        return stream(exs)
+                .skip(1)
+                .reduce(exs[0], Expression::concat, Expression::concat);
+    }
+
+    public static Expression ipath(String... identifiers) {
+        return path(stream(identifiers)
+                .map(Expression::i)
+                .toArray());
     }
 
     public static Expression e(Enum<?> value) {

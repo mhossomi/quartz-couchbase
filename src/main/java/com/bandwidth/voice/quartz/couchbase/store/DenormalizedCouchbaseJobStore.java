@@ -1,7 +1,13 @@
 package com.bandwidth.voice.quartz.couchbase.store;
 
+import static com.bandwidth.voice.quartz.couchbase.TriggerState.ACQUIRED;
+import static com.bandwidth.voice.quartz.couchbase.TriggerState.READY;
+
+import com.bandwidth.voice.quartz.couchbase.store.DenormalizedCouchbaseDelegate.JobTriggerKey;
 import com.couchbase.client.java.Bucket;
 import com.couchbase.client.java.CouchbaseCluster;
+import com.google.common.collect.ListMultimap;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -251,6 +257,21 @@ public class DenormalizedCouchbaseJobStore extends CouchbaseJobStore {
     public List<OperableTrigger> acquireNextTriggers(long noLaterThan, int maxCount, long timeWindow)
             throws JobPersistenceException {
         log.trace("acquireNextTriggers: {}, {}, {}", noLaterThan, maxCount, timeWindow);
+
+        List<OperableTrigger> triggers = new ArrayList<>();
+        long maxNextFireTime = Math.max(noLaterThan, System.currentTimeMillis()) + timeWindow;
+
+        ListMultimap<JobKey, TriggerKey> jobTriggerKeys = couchbase.selectTriggerKeys(READY, maxNextFireTime, maxCount);
+        log.debug("Trying to acquire {} triggers", jobTriggerKeys.size());
+
+        for (var jobTriggerKey : jobTriggerKeys.entries()) {
+            log.trace("Trying to acquire trigger: {}", jobTriggerKey.getValue());
+            couchbase.updateTriggerState(jobTriggerKey.getKey(), jobTriggerKey.getValue(), READY, ACQUIRED)
+                    .ifPresent(trigger -> {
+                        log.trace("Acquired trigger: {}", trigger.getKey());
+                        triggers.add(trigger);
+                    });
+        }
         return null;
     }
 
