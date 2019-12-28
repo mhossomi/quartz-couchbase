@@ -2,9 +2,6 @@ package com.bandwidth.voice.quartz.couchbase.store;
 
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.allOf;
 import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.e;
-import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.jobId;
-import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.lockId;
-import static com.bandwidth.voice.quartz.couchbase.CouchbaseUtils.triggerId;
 import static com.couchbase.client.java.query.Select.select;
 import static com.couchbase.client.java.query.dsl.Expression.i;
 import static com.couchbase.client.java.query.dsl.Expression.s;
@@ -13,9 +10,9 @@ import static com.couchbase.client.java.query.dsl.Sort.asc;
 import static com.couchbase.client.java.query.dsl.functions.DateFunctions.millis;
 import static java.lang.String.format;
 import static java.util.stream.Collectors.toList;
+import static org.quartz.JobKey.jobKey;
 import static org.quartz.TriggerKey.triggerKey;
 
-import com.bandwidth.voice.quartz.couchbase.CouchbaseUtils;
 import com.bandwidth.voice.quartz.couchbase.LockException;
 import com.bandwidth.voice.quartz.couchbase.TriggerState;
 import com.couchbase.client.core.CouchbaseException;
@@ -90,7 +87,7 @@ public class NormalizedCouchbaseDelegate extends CouchbaseDelegate {
         try {
             return retrieveTrigger(triggerKey)
                     .map(Trigger::getJobKey)
-                    .map(CouchbaseUtils::jobId)
+                    .map(this::jobId)
                     .map(bucket::get)
                     .map(document -> convertJob(document.content()));
         }
@@ -134,7 +131,9 @@ public class NormalizedCouchbaseDelegate extends CouchbaseDelegate {
         try {
             return Optional.of(triggerId(triggerKey))
                     .map(bucket::get)
-                    .map(document -> convertTrigger(document.content()));
+                    .map(Document::content)
+                    .map(document -> convertTrigger(
+                            jobKey(document.getString("jobName"), document.getString("jobGroup")), document));
         }
         catch (CouchbaseException e) {
             throw new JobPersistenceException("Failed to retrieve trigger: " + triggerKey, e);
@@ -185,7 +184,10 @@ public class NormalizedCouchbaseDelegate extends CouchbaseDelegate {
                             return null;
                         }
                     })
-                    .map(document -> convertTrigger(document.content()));
+                    .map(Document::content)
+                    .map(document -> convertTrigger(
+                            jobKey(document.getString("jobName"), document.getString("jobGroup")),
+                            document));
         }
         catch (CouchbaseException e) {
             throw new JobPersistenceException("Failed to update trigger status: " + triggerKey, e);
@@ -245,6 +247,22 @@ public class NormalizedCouchbaseDelegate extends CouchbaseDelegate {
 
     private JsonObject setTriggerState(JsonObject trigger, TriggerState state) {
         return trigger.put("state", state.name());
+    }
+
+    private String jobId(JobKey key) {
+        return key != null
+                ? "J." + key.toString()
+                : null;
+    }
+
+    private String triggerId(TriggerKey key) {
+        return key != null
+                ? "T." + key.toString()
+                : null;
+    }
+
+    private String lockId(String schedulerName, String lockName) {
+        return String.format("L.%s.%s", schedulerName, lockName);
     }
 
     @RequiredArgsConstructor

@@ -3,6 +3,7 @@ package com.bandwidth.voice.quartz.couchbase.store;
 import static com.couchbase.client.java.query.Select.select;
 import static com.couchbase.client.java.query.dsl.functions.AggregateFunctions.count;
 import static org.quartz.JobBuilder.newJob;
+import static org.quartz.JobKey.jobKey;
 
 import com.bandwidth.voice.quartz.couchbase.converter.SimpleTriggerConverter;
 import com.bandwidth.voice.quartz.couchbase.converter.TriggerConverter;
@@ -18,6 +19,7 @@ import lombok.NonNull;
 import org.quartz.Job;
 import org.quartz.JobDataMap;
 import org.quartz.JobDetail;
+import org.quartz.JobKey;
 import org.quartz.JobPersistenceException;
 import org.quartz.spi.OperableTrigger;
 import org.slf4j.Logger;
@@ -84,13 +86,13 @@ public abstract class CouchbaseDelegate {
                 .put("schedulerName", schedulerName);
     }
 
-    protected OperableTrigger convertTrigger(JsonObject object) {
+    protected OperableTrigger convertTrigger(JobKey jobKey, JsonObject object) {
         String type = object.getString("type");
         return triggerConverters.stream()
                 .flatMap(e -> e.forType(type).stream())
                 .findAny()
                 .orElseThrow(() -> new IllegalArgumentException("No converter found for trigger type " + type))
-                .convert(object);
+                .convert(jobKey, object);
     }
 
     protected N1qlQueryResult query(Statement query) throws JobPersistenceException {

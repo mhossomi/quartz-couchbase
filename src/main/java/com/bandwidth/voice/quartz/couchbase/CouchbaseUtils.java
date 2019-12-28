@@ -13,22 +13,6 @@ import org.quartz.TriggerKey;
 
 public class CouchbaseUtils {
 
-    public static String jobId(JobKey key) {
-        return key != null
-                ? "J." + key.toString()
-                : null;
-    }
-
-    public static String triggerId(TriggerKey key) {
-        return key != null
-                ? "T." + key.toString()
-                : null;
-    }
-
-    public static String lockId(String schedulerName, String lockName) {
-        return String.format("L.%s.%s", schedulerName, lockName);
-    }
-
     public static String serialize(Date date) {
         return date != null
                 ? date.toInstant().toString()

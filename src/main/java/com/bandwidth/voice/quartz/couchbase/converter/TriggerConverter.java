@@ -9,6 +9,7 @@ import java.util.Objects;
 import java.util.Optional;
 import lombok.AllArgsConstructor;
 import org.quartz.JobDataMap;
+import org.quartz.JobKey;
 import org.quartz.Trigger;
 import org.quartz.TriggerBuilder;
 import org.quartz.spi.OperableTrigger;
@@ -49,14 +50,12 @@ public abstract class TriggerConverter<T extends OperableTrigger> {
                 .put("misfireInstruction", trigger.getMisfireInstruction()));
     }
 
-    public abstract JsonObject convert(T trigger, JsonObject object);
-
-    public final T convert(JsonObject object) {
+    public final T convert(JobKey jobKey, JsonObject object) {
         T trigger = convert(object, TriggerBuilder.newTrigger()
                 .withIdentity(object.getString("name"), object.getString("group"))
                 .withDescription(object.getString("description"))
+                .forJob(jobKey)
                 .usingJobData(parseData(object))
-                .forJob(jobKey(object.getString("jobName"), object.getString("jobGroup")))
                 .startAt(parse(object.getString("startTime")))
                 .endAt(parse(object.getString("endTime")))
                 .withPriority(object.getInt("priority")));
@@ -65,6 +64,8 @@ public abstract class TriggerConverter<T extends OperableTrigger> {
         trigger.setMisfireInstruction(object.getInt("misfireInstruction"));
         return trigger;
     }
+
+    public abstract JsonObject convert(T trigger, JsonObject object);
 
     public abstract T convert(JsonObject object, TriggerBuilder<Trigger> builder);
 

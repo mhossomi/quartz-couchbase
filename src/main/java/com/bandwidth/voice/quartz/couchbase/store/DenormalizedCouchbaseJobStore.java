@@ -3,17 +3,18 @@ package com.bandwidth.voice.quartz.couchbase.store;
 import static com.bandwidth.voice.quartz.couchbase.TriggerState.ACQUIRED;
 import static com.bandwidth.voice.quartz.couchbase.TriggerState.READY;
 
-import com.bandwidth.voice.quartz.couchbase.store.DenormalizedCouchbaseDelegate.JobTriggerKey;
 import com.couchbase.client.java.Bucket;
 import com.couchbase.client.java.CouchbaseCluster;
 import com.google.common.collect.ListMultimap;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.quartz.Calendar;
 import org.quartz.JobDetail;
@@ -28,11 +29,15 @@ import org.quartz.impl.matchers.GroupMatcher;
 import org.quartz.spi.ClassLoadHelper;
 import org.quartz.spi.OperableTrigger;
 import org.quartz.spi.SchedulerSignaler;
+import org.quartz.spi.TriggerFiredBundle;
 import org.quartz.spi.TriggerFiredResult;
 
 @Slf4j
 @NoArgsConstructor
 public class DenormalizedCouchbaseJobStore extends CouchbaseJobStore {
+
+    @Setter
+    private int maxAcquireRetries = 5;
 
     private DenormalizedCouchbaseDelegate couchbase;
 
@@ -81,7 +86,7 @@ public class DenormalizedCouchbaseJobStore extends CouchbaseJobStore {
 
     public void storeJobAndTrigger(JobDetail job, OperableTrigger trigger) throws JobPersistenceException {
         log.trace("storeJobAndTrigger: {}, {}", job, trigger);
-        couchbase.storeJobWithTrigger(job, trigger);
+        couchbase.storeJobWithTrigger(job, trigger, READY);
     }
 
     public void storeJobsAndTriggers(Map<JobDetail, Set<? extends Trigger>> triggersAndJobs, boolean replace)
@@ -89,7 +94,7 @@ public class DenormalizedCouchbaseJobStore extends CouchbaseJobStore {
         log.trace("storeJobsAndTriggers: {}, {}", triggersAndJobs, replace);
         for (var triggerAndJob : triggersAndJobs.entrySet()) {
             for (Trigger trigger : triggerAndJob.getValue()) {
-                couchbase.storeJobWithTrigger(triggerAndJob.getKey(), (OperableTrigger) trigger);
+                couchbase.storeJobWithTrigger(triggerAndJob.getKey(), (OperableTrigger) trigger, READY);
             }
         }
     }
@@ -259,20 +264,23 @@ public class DenormalizedCouchbaseJobStore extends CouchbaseJobStore {
         log.trace("acquireNextTriggers: {}, {}, {}", noLaterThan, maxCount, timeWindow);
 
         List<OperableTrigger> triggers = new ArrayList<>();
-        long maxNextFireTime = Math.max(noLaterThan, System.currentTimeMillis()) + timeWindow;
+        for (int tries = 0; tries < maxAcquireRetries && triggers.isEmpty(); tries++) {
+            long maxNextFireTime = Math.max(noLaterThan, System.currentTimeMillis()) + timeWindow;
 
-        ListMultimap<JobKey, TriggerKey> jobTriggerKeys = couchbase.selectTriggerKeys(READY, maxNextFireTime, maxCount);
-        log.debug("Trying to acquire {} triggers", jobTriggerKeys.size());
+            ListMultimap<JobKey, TriggerKey> jobTriggerKeys =
+                    couchbase.selectTriggerKeys(READY, maxNextFireTime, maxCount);
+            log.debug("Trying to acquire {} triggers", jobTriggerKeys.size());
 
-        for (var jobTriggerKey : jobTriggerKeys.entries()) {
-            log.trace("Trying to acquire trigger: {}", jobTriggerKey.getValue());
-            couchbase.updateTriggerState(jobTriggerKey.getKey(), jobTriggerKey.getValue(), READY, ACQUIRED)
-                    .ifPresent(trigger -> {
-                        log.trace("Acquired trigger: {}", trigger.getKey());
-                        triggers.add(trigger);
-                    });
+            for (var jobTriggerKey : jobTriggerKeys.entries()) {
+                log.trace("Trying to acquire trigger: {}", jobTriggerKey.getValue());
+                couchbase.updateTriggerState(jobTriggerKey.getKey(), jobTriggerKey.getValue(), READY, ACQUIRED)
+                        .ifPresent(trigger -> {
+                            log.trace("Acquired trigger: {}", trigger.getKey());
+                            triggers.add(trigger);
+                        });
+            }
         }
-        return null;
+        return triggers;
     }
 
     public void releaseAcquiredTrigger(OperableTrigger trigger) {
@@ -281,7 +289,23 @@ public class DenormalizedCouchbaseJobStore extends CouchbaseJobStore {
 
     public List<TriggerFiredResult> triggersFired(List<OperableTrigger> triggers) throws JobPersistenceException {
         log.trace("triggersFired: {}", triggers);
-        return null;
+        List<TriggerFiredResult> result = new ArrayList<>();
+        for (OperableTrigger trigger : triggers) {
+            Optional<JobDetail> triggerJob = couchbase.retrieveJob(trigger.getJobKey());
+            if (triggerJob.isPresent()) {
+                JobDetail job = triggerJob.get();
+                Date scheduledFireTime = trigger.getPreviousFireTime();
+
+                trigger.triggered(null);
+                couchbase.storeTrigger(trigger, READY, true);
+
+                log.debug("Fired trigger {} with job {}", trigger.getKey(), job.getKey());
+                result.add(new TriggerFiredResult(new TriggerFiredBundle(
+                        job, trigger, null, false,
+                        new Date(), scheduledFireTime, trigger.getPreviousFireTime(), trigger.getNextFireTime())));
+            }
+        }
+        return result;
     }
 
     public void triggeredJobComplete(OperableTrigger trigger, JobDetail jobDetail,
